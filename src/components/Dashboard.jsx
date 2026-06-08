@@ -8,8 +8,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-}
- from "recharts";
+}from "recharts";
 
 function Dashboard({ results }) {
   if (!results || results.length === 0) {
