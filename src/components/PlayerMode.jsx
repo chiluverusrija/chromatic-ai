@@ -25,7 +25,7 @@ function PlayerMode() {
 
   // Check if coloring is valid
   function isConflict(state, color, currentAssignments) {
-    const neighbors = indiaAdjacency[state]  [];
+    const neighbors = indiaAdjacency[state] || [];
     return neighbors.some((n) => currentAssignments[n] === color);
   }
 
@@ -62,7 +62,11 @@ function PlayerMode() {
     const result = runBacktracking(states);
     setAiAssignments(result.assignments);
     setShowAI(true);
-    setMessage("AI solved it using " + new Set(Object.values(result.assignments)).size + " colors!");
+    setMessage(
+      "AI solved it using " +
+        new Set(Object.values(result.assignments)).size +
+        " colors!"
+    );
   }
 
   // Reset everything
@@ -121,6 +125,7 @@ function PlayerMode() {
         >
           Your Solution
         </button>
+
         <button
           onClick={handleShowAI}
           style={{
@@ -132,7 +137,7 @@ function PlayerMode() {
             background: showAI ? "#38a169" : "transparent",
             color: showAI ? "white" : "#a0aec0",
             fontSize: "13px",
-             cursor: "pointer",
+            cursor: "pointer",
           }}
         >
           AI Solution
@@ -153,6 +158,7 @@ function PlayerMode() {
             const color = currentAssignments[state]
               ? COLOR_MAP[currentAssignments[state]]
               : COLOR_MAP.default;
+
             const isSelected = selectedState === state;
             const isConflictState = conflictState === state;
 
@@ -204,28 +210,70 @@ function PlayerMode() {
           >
             Comparison
           </p>
+
           <div style={{ display: "flex", gap: "16px" }}>
             <div>
-              <p style={{ color: "#a0aec0", fontSize: "12px", margin: "0 0 4px 0" }}>
+              <p
+                style={{
+                  color: "#a0aec0",
+                  fontSize: "12px",
+                  margin: "0 0 4px 0",
+                }}
+              >
                 Your colors used
               </p>
-              <p style={{ color: "#FC8181", fontSize: "22px", fontWeight: "600", margin: 0 }}>
-                {new Set(Object.values(assignments)).size  0}
+              <p
+                style={{
+                  color: "#FC8181",
+                  fontSize: "22px",
+                  fontWeight: "600",
+                  margin: 0,
+                }}
+              >
+                {new Set(Object.values(assignments)).size || 0}
               </p>
             </div>
+
             <div>
-              <p style={{ color: "#a0aec0", fontSize: "12px", margin: "0 0 4px 0" }}>
+              <p
+                style={{
+                  color: "#a0aec0",
+                  fontSize: "12px",
+                  margin: "0 0 4px 0",
+                }}
+              >
                 AI colors used
               </p>
-              <p style={{ color: "#68D391", fontSize: "22px", fontWeight: "600", margin: 0 }}>
+              <p
+                style={{
+                  color: "#68D391",
+                  fontSize: "22px",
+                  fontWeight: "600",
+                  margin: 0,
+                }}
+              >
                 {new Set(Object.values(aiAssignments || {})).size}
               </p>
             </div>
+
             <div>
-              <p style={{ color: "#a0aec0", fontSize: "12px", margin: "0 0 4px 0" }}>
+              <p
+                style={{
+                  color: "#a0aec0",
+                  fontSize: "12px",
+                  margin: "0 0 4px 0",
+                }}
+              >
                 Your states colored
               </p>
-              <p style={{ color: "#63B3ED", fontSize: "22px", fontWeight: "600", margin: 0 }}>
+              <p
+                style={{
+                  color: "#63B3ED",
+                  fontSize: "22px",
+                  fontWeight: "600",
+                  margin: 0,
+                }}
+              >
                 {Object.keys(assignments).length}
               </p>
             </div>

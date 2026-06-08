@@ -28,7 +28,6 @@ function Dashboard({ results }) {
       </div>
     );
   }
-
   const nodesData = results.map((r) => ({
     name: r.algorithm,
     "Nodes Explored": r.nodesExplored,
