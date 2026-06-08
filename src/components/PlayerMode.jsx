@@ -189,7 +189,7 @@ function PlayerMode() {
           onColorSelect={setSelectedColor}
         />
       )}
-
+      
       {/* Comparison */}
       {showAI && (
         <div
