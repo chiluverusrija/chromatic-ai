@@ -1,10 +1,8 @@
 import indiaAdjacency from "../data/indiaAdjacency.js";
 
-const COLORS = ["red", "green", "blue", "yellow"];
-
 // Check if a color is safe to assign to a state
-function isSafe(state, color, assignments) {
-  const neighbors = indiaAdjacency[state] || [];
+function isSafe(state, color, assignments, adjacency) {
+  const neighbors = adjacency[state] || [];
   for (let neighbor of neighbors) {
     if (assignments[neighbor] === color) {
       return false;
@@ -14,8 +12,7 @@ function isSafe(state, color, assignments) {
 }
 
 // Core Backtracking Algorithm
-export function backtrack(states, assignments = {}, steps = []) {
-  // If all states are assigned, we are done
+export function backtrack(states, assignments = {}, steps = [], adjacency, colors) {
   if (Object.keys(assignments).length === states.length) {
     return { success: true, assignments, steps };
   }
@@ -23,9 +20,8 @@ export function backtrack(states, assignments = {}, steps = []) {
   // Pick next unassigned state
   const state = states.find((s) => !assignments[s]);
 
-  for (let color of COLORS) {
-    if (isSafe(state, color, assignments)) {
-      // Assign color
+  for (let color of colors) {
+    if (isSafe(state, color, assignments, adjacency)) {
       assignments[state] = color;
       steps.push({
         state,
@@ -34,8 +30,7 @@ export function backtrack(states, assignments = {}, steps = []) {
         snapshot: { ...assignments },
       });
 
-      // Recurse
-      const result = backtrack(states, assignments, steps);
+      const result = backtrack(states, assignments, steps, adjacency, colors);
       if (result.success) return result;
 
       // Backtrack
@@ -53,10 +48,24 @@ export function backtrack(states, assignments = {}, steps = []) {
 }
 
 // Run backtracking and return result with performance stats
-export function runBacktracking(states) {
+export function runBacktracking(states, adjacency = indiaAdjacency, colors = ["red", "green", "blue", "yellow"]) {
   const startTime = performance.now();
   const steps = [];
-  const result = backtrack([...states], {}, steps);
+
+  const backtrackingOrder = [
+    "Chhattisgarh", "Himachal Pradesh", "Tripura", "Madhya Pradesh", "Bihar",
+    "West Bengal", "Goa", "Odisha", "Assam", "Haryana", "Delhi", "Punjab",
+    "Ladakh", "Sikkim", "Tamil Nadu", "Rajasthan", "Jharkhand", "Telangana",
+    "Maharashtra", "Nagaland", "Mizoram", "Gujarat", "Karnataka",
+    "Arunachal Pradesh", "Andhra Pradesh", "Manipur", "Uttarakhand",
+    "Meghalaya", "Jammu & Kashmir", "Uttar Pradesh", "Kerala"
+  ];
+
+  const orderedStates = backtrackingOrder.filter((s) => states.includes(s));
+  const remainingStates = states.filter((s) => !backtrackingOrder.includes(s));
+  const finalOrder = [...orderedStates, ...remainingStates];
+
+  const result = backtrack(finalOrder, {}, steps, adjacency, colors);
   const endTime = performance.now();
 
   return {

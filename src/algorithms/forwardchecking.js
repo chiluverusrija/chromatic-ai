@@ -1,19 +1,17 @@
 import indiaAdjacency from "../data/indiaAdjacency.js";
 
-const COLORS = ["red", "green", "blue", "yellow"];
-
-// Build initial domains — all states can use all 4 colors
-function buildDomains(states) {
+// Build initial domains
+function buildDomains(states, colors) {
   const domains = {};
   for (let state of states) {
-    domains[state] = [...COLORS];
+    domains[state] = [...colors];
   }
   return domains;
 }
 
 // Check if a color is safe to assign to a state
-function isSafe(state, color, assignments) {
-  const neighbors = indiaAdjacency[state] || [];
+function isSafe(state, color, assignments, adjacency) {
+  const neighbors = adjacency[state] || [];
   for (let neighbor of neighbors) {
     if (assignments[neighbor] === color) {
       return false;
@@ -24,9 +22,9 @@ function isSafe(state, color, assignments) {
 
 // Forward checking — after assigning color to state,
 // remove that color from all unassigned neighbors domains
-function forwardCheck(state, color, domains, assignments) {
+function forwardCheck(state, color, domains, assignments, adjacency) {
   const newDomains = JSON.parse(JSON.stringify(domains));
-  const neighbors = indiaAdjacency[state] || [];
+  const neighbors = adjacency[state] || [];
 
   for (let neighbor of neighbors) {
     if (!assignments[neighbor]) {
@@ -51,18 +49,15 @@ function selectState(states, assignments, domains) {
 }
 
 // Core Forward Checking Algorithm
-function fcBacktrack(states, assignments = {}, domains, steps = []) {
-  // If all states assigned we are done
+function fcBacktrack(states, assignments = {}, domains, steps = [], adjacency, colors) {
   if (Object.keys(assignments).length === states.length) {
     return { success: true, assignments, steps };
   }
 
-  // Pick next state
   const state = selectState(states, assignments, domains);
 
   for (let color of domains[state]) {
-    if (isSafe(state, color, assignments)) {
-      // Assign color
+    if (isSafe(state, color, assignments, adjacency)) {
       assignments[state] = color;
       steps.push({
         state,
@@ -72,11 +67,11 @@ function fcBacktrack(states, assignments = {}, domains, steps = []) {
       });
 
       // Forward check — update neighbor domains
-      const newDomains = forwardCheck(state, color, domains, assignments);
+      const newDomains = forwardCheck(state, color, domains, assignments, adjacency);
 
       if (newDomains !== null) {
         // Recurse with updated domains
-        const result = fcBacktrack(states, assignments, newDomains, steps);
+        const result = fcBacktrack(states, assignments, newDomains, steps, adjacency, colors);
         if (result.success) return result;
       }
 
@@ -95,11 +90,11 @@ function fcBacktrack(states, assignments = {}, domains, steps = []) {
 }
 
 // Run Forward Checking and return result with performance stats
-export function runForwardChecking(states) {
+export function runForwardChecking(states, adjacency = indiaAdjacency, colors = ["red", "green", "blue", "yellow"]) {
   const startTime = performance.now();
   const steps = [];
-  const domains = buildDomains(states);
-  const result = fcBacktrack([...states], {}, domains, steps);
+  const domains = buildDomains(states, colors);
+  const result = fcBacktrack([...states], {}, domains, steps, adjacency, colors);
   const endTime = performance.now();
 
   return {

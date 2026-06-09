@@ -7,13 +7,15 @@ import Controls from "./components/Controls.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import PlayerMode from "./components/PlayerMode.jsx";
 import ExamScheduler from "./components/ExamScheduler.jsx";
+import PythonDebugger from "./components/PythonDebugger.jsx";
 
 import { runBacktracking } from "./algorithms/backtracking.js";
 import { runMRV } from "./algorithms/mrv.js";
 import { runForwardChecking } from "./algorithms/forwardChecking.js";
-import indiaMapPaths from "./data/indiaMapPaths.js";
-
-const STATES = Object.keys(indiaMapPaths);
+import { runBFS, runDFS } from "./algorithms/traversal.js";
+import { runChromaticFinder } from "./algorithms/chromatic.js";
+import { BFS_PYTHON, DFS_PYTHON } from "./algorithms/traversalPyCode.js";
+import { MAPS_REGISTRY } from "./data/mapsRegistry.js";
 
 const ALGORITHM_MAP = {
   backtracking: { fn: runBacktracking, label: "Backtracking" },
@@ -21,10 +23,122 @@ const ALGORITHM_MAP = {
   forwardChecking: { fn: runForwardChecking, label: "Forward Checking" },
 };
 
+// Canvas Interactive Particles Component
+function ParticleCanvas() {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    let animationFrameId;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    const particleCount = Math.min(65, Math.floor((width * height) / 22000));
+    const particles = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        r: Math.random() * 2 + 1,
+      });
+    }
+
+    let mouse = { x: null, y: null };
+    const handleMouseMove = (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    };
+    const handleMouseLeave = () => {
+      mouse.x = null;
+      mouse.y = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseleave", handleMouseLeave);
+
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "rgba(139, 92, 246, 0.35)";
+      ctx.strokeStyle = "rgba(139, 92, 246, 0.06)";
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Connect particles
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 110) {
+            ctx.lineWidth = (1 - dist / 110) * 0.6;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+
+        // Connect to mouse
+        if (mouse.x !== null && mouse.y !== null) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 160) {
+            ctx.strokeStyle = `rgba(59, 130, 246, ${(1 - dist / 160) * 0.12})`;
+            ctx.lineWidth = (1 - dist / 160) * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(mouse.x, mouse.y);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(139, 92, 246, 0.06)";
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseleave", handleMouseLeave);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="particle-canvas" />;
+}
+
 function App() {
+  const [appSection, setAppSection] = useState("landing"); // landing | sandbox
   const [mode, setMode] = useState("ai");
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState("backtracking");
-  const [selectedSpeed, setSelectedSpeed] = useState({ id: "normal", ms: 400 });
+  const [selectedSpeed, setSelectedSpeed] = useState({ id: "normal", label: "⚡ Normal", ms: 300 });
   const [assignments, setAssignments] = useState({});
   const [isRunning, setIsRunning] = useState(false);
   const [isDone, setIsDone] = useState(false);
@@ -34,15 +148,98 @@ function App() {
   const [selectedState, setSelectedState] = useState(null);
   const [dashboardResults, setDashboardResults] = useState([]);
   const [stepLog, setStepLog] = useState([]);
+
+  // Map & Graph Model Selection
+  const [selectedMapId, setSelectedMapId] = useState("india");
+  const activeMapModel = MAPS_REGISTRY[selectedMapId] || MAPS_REGISTRY.india;
+
+  // Solver Difficulty (influences color count limits)
+  const [difficulty, setDifficulty] = useState("easy"); // easy (4) | medium (3) | hard (2)
+
+  // Solver details derived from difficulty level
+  const activeColors = difficulty === "easy"
+    ? ["red", "green", "blue", "yellow"]
+    : difficulty === "medium"
+    ? ["red", "green", "blue"]
+    : ["red", "green"];
+
+  // Traversal States
+  const [selectedTraversal, setSelectedTraversal] = useState("bfs");
+  const [selectedStartState, setSelectedStartState] = useState("Jammu & Kashmir");
+  const [traversalState, setTraversalState] = useState(null);
+
+  // CSP Solver parameters
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState("backtracking");
+
+  // Python Engine States
+  const [usePythonEngine, setUsePythonEngine] = useState(false);
+  const [pyodide, setPyodide] = useState(null);
+  const [pyodideStatus, setPyodideStatus] = useState("idle"); // idle | loading | ready | error
+
   const intervalRef = useRef(null);
   const stepLogRef = useRef(null);
 
-  // Auto scroll step log
+  // Load Pyodide Environment Dynamically
+  const loadPyodideEnv = async () => {
+    if (pyodide) return pyodide;
+    setPyodideStatus("loading");
+    try {
+      if (!window.loadPyodide) {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js";
+        script.async = true;
+        document.body.appendChild(script);
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = reject;
+        });
+      }
+      const py = await window.loadPyodide({
+        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/"
+      });
+      setPyodide(py);
+      setPyodideStatus("ready");
+      return py;
+    } catch (err) {
+      console.error("Pyodide Loader Error:", err);
+      setPyodideStatus("error");
+      return null;
+    }
+  };
+
+  // Keep starting state synchronized on active model changes to prevent crashes
+  useEffect(() => {
+    if (activeMapModel && activeMapModel.states && activeMapModel.states.length > 0) {
+      setSelectedStartState(activeMapModel.states[0]);
+    }
+    handleReset();
+  }, [selectedMapId]);
+
+  // Launch a sandbox mode from landing dashboard
+  function launchSandbox(selectedMode) {
+    setMode(selectedMode);
+    setAppSection("sandbox");
+    handleReset();
+  }
+
+  // Auto-scroll log
   useEffect(() => {
     if (stepLogRef.current) {
       stepLogRef.current.scrollTop = stepLogRef.current.scrollHeight;
     }
   }, [stepLog]);
+
+  // Clean interval on unmount
+  useEffect(() => {
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  // Pre-load Pyodide when python engine is toggled
+  useEffect(() => {
+    if (usePythonEngine && pyodideStatus === "idle") {
+      loadPyodideEnv();
+    }
+  }, [usePythonEngine]);
 
   function handleStart() {
     if (isRunning) return;
@@ -52,17 +249,25 @@ function App() {
       return;
     }
 
+    if (mode === "traversal") {
+      runTraversalAnimation();
+      return;
+    }
+
+    // Standard CSP Solver Mode
     const algo = ALGORITHM_MAP[selectedAlgorithm];
     if (!algo) return;
 
     setIsRunning(true);
     setIsDone(false);
     setAssignments({});
+    setTraversalState(null);
     setSteps([]);
     setStepLog([]);
     setCurrentStep(0);
 
-    const result = algo.fn(STATES);
+    // Run the solver on active states list, active adjacency list, and active colors count
+    const result = algo.fn(activeMapModel.states, activeMapModel.adjacency, activeColors);
     const allSteps = result.steps;
     setSteps(allSteps);
 
@@ -77,6 +282,10 @@ function App() {
           backtracks: result.backtracks,
           timeTaken: result.timeTaken,
         },
+      ]);
+      setStepLog([
+        { type: "assign", text: `Solved using ${algo.label} (Colors: ${activeColors.join(", ")})!` },
+        { type: "assign", text: `Nodes Explored: ${result.nodesExplored}, Backtracks: ${result.backtracks}, Time: ${result.timeTaken}ms` }
       ]);
       return;
     }
@@ -106,16 +315,204 @@ function App() {
         setConflictState(null);
         setStepLog((prev) => [
           ...prev,
-          { type: "assign", text: "Assign " + step.color + " to " + step.state },
+          { type: "assign", text: `Assign ${step.color.toUpperCase()} to ${step.state}` },
         ]);
       } else {
         setConflictState(step.state);
         setStepLog((prev) => [
           ...prev,
-          { type: "backtrack", text: "Backtrack from " + step.state },
+          { type: "backtrack", text: `Backtrack from ${step.state} (conflict!)` },
         ]);
         setTimeout(() => setConflictState(null), selectedSpeed.ms * 0.8);
       }
+
+      setCurrentStep(i + 1);
+      i++;
+    }, selectedSpeed.ms);
+  }
+
+  // Traversal step animation
+  async function runTraversalAnimation() {
+    setIsRunning(true);
+    setIsDone(false);
+    setAssignments({});
+    setSteps([]);
+    setStepLog([]);
+    setCurrentStep(0);
+
+    let result = null;
+
+    if (usePythonEngine) {
+      let py = pyodide;
+      if (!py) {
+        py = await loadPyodideEnv();
+      }
+
+      if (py) {
+        try {
+          await py.runPythonAsync(BFS_PYTHON);
+          await py.runPythonAsync(DFS_PYTHON);
+
+          py.globals.set("start_state", selectedStartState);
+          py.globals.set("adj_list_json", JSON.stringify(activeMapModel.adjacency));
+
+          const runCmd = selectedTraversal === "bfs"
+            ? "import json\njson.dumps(run_bfs(start_state, json.loads(adj_list_json)))"
+            : "import json\njson.dumps(run_dfs(start_state, json.loads(adj_list_json)))";
+
+          const pythonJSON = await py.runPythonAsync(runCmd);
+          result = JSON.parse(pythonJSON);
+        } catch (err) {
+          console.error("Python engine error, falling back to JS: ", err);
+          result = selectedTraversal === "bfs"
+            ? runBFS(selectedStartState, activeMapModel.states)
+            : runDFS(selectedStartState, activeMapModel.states);
+        }
+      } else {
+        result = selectedTraversal === "bfs"
+          ? runBFS(selectedStartState, activeMapModel.states)
+          : runDFS(selectedStartState, activeMapModel.states);
+      }
+    } else {
+      result = selectedTraversal === "bfs"
+        ? runBFS(selectedStartState, activeMapModel.states)
+        : runDFS(selectedStartState, activeMapModel.states);
+    }
+
+    const allSteps = result.steps;
+    setSteps(allSteps);
+
+    if (selectedSpeed.ms === 0) {
+      setIsRunning(false);
+      setIsDone(true);
+      const lastStep = allSteps[allSteps.length - 1];
+      setTraversalState({
+        activeNode: null,
+        visitedNodes: lastStep.visited,
+        fringeNodes: [],
+        activeEdge: null,
+      });
+      setStepLog(allSteps.map(s => ({ type: s.type === "visit" ? "assign" : "backtrack", text: s.log })));
+      return;
+    }
+
+    let i = 0;
+    intervalRef.current = setInterval(() => {
+      if (i >= allSteps.length) {
+        clearInterval(intervalRef.current);
+        setIsRunning(false);
+        setIsDone(true);
+        return;
+      }
+
+      const step = allSteps[i];
+
+      setTraversalState({
+        activeNode: step.type === "visit" ? step.node : null,
+        visitedNodes: step.visited,
+        fringeNodes: step.queue || step.stack || [],
+        activeEdge: step.activeEdge,
+      });
+
+      setStepLog((prev) => [
+        ...prev,
+        {
+          type: step.type === "visit" ? "assign" : step.type === "skip" ? "backtrack" : "idle",
+          text: step.log
+        }
+      ]);
+
+      setCurrentStep(i + 1);
+      i++;
+    }, selectedSpeed.ms);
+  }
+
+  // Chromatic Number Finder Animation
+  function runChromaticFinderAnimation() {
+    setIsRunning(true);
+    setIsDone(false);
+    setAssignments({});
+    setTraversalState(null);
+    setSteps([]);
+    setStepLog([]);
+    setCurrentStep(0);
+
+    const result = runChromaticFinder(activeMapModel.states, activeMapModel.adjacency);
+    
+    const timeline = [];
+    result.attempts.forEach((att) => {
+      timeline.push({
+        type: "info",
+        log: `--- ⚡ Testing Color Assignment with k = ${att.k} ---`,
+        snapshot: {}
+      });
+
+      att.steps.forEach((step) => {
+        timeline.push({
+          type: step.type,
+          state: step.state,
+          color: step.color,
+          snapshot: step.snapshot,
+          log: `[k=${att.k}] ${step.log}`
+        });
+      });
+
+      if (att.success) {
+        timeline.push({
+          type: "success",
+          log: `✅ Success! Graph is colorable with k = ${att.k} colors.`,
+          snapshot: att.assignments
+        });
+      } else {
+        timeline.push({
+          type: "fail",
+          log: `❌ Failed! Cannot color map using only ${att.k} colors.`,
+          snapshot: {}
+        });
+      }
+    });
+
+    setSteps(timeline);
+
+    if (selectedSpeed.ms === 0) {
+      setAssignments(result.attempts[result.attempts.length - 1].assignments || {});
+      setIsRunning(false);
+      setIsDone(true);
+      setStepLog(timeline.map(s => ({ type: s.type === "success" ? "assign" : s.type === "fail" ? "backtrack" : "idle", text: s.log })));
+      return;
+    }
+
+    let i = 0;
+    intervalRef.current = setInterval(() => {
+      if (i >= timeline.length) {
+        clearInterval(intervalRef.current);
+        setIsRunning(false);
+        setIsDone(true);
+        return;
+      }
+
+      const step = timeline[i];
+
+      if (step.snapshot) {
+        setAssignments({ ...step.snapshot });
+      }
+
+      if (step.type === "backtrack" || step.type === "fail") {
+        setConflictState(step.state || null);
+        setTimeout(() => setConflictState(null), selectedSpeed.ms * 0.8);
+      }
+
+      setStepLog((prev) => [
+        ...prev,
+        {
+          type: step.type === "success" || step.type === "assign"
+            ? "assign"
+            : step.type === "fail" || step.type === "backtrack"
+            ? "backtrack"
+            : "idle",
+          text: step.log
+        }
+      ]);
 
       setCurrentStep(i + 1);
       i++;
@@ -128,7 +525,7 @@ function App() {
     setDashboardResults([]);
 
     const results = Object.entries(ALGORITHM_MAP).map(([key, algo]) => {
-      const result = algo.fn(STATES);
+      const result = algo.fn(activeMapModel.states, activeMapModel.adjacency, activeColors);
       return {
         algorithm: algo.label,
         nodesExplored: result.nodesExplored,
@@ -138,7 +535,7 @@ function App() {
     });
 
     setDashboardResults(results);
-    setAssignments(runBacktracking(STATES).assignments);
+    setAssignments(runBacktracking(activeMapModel.states, activeMapModel.adjacency, activeColors).assignments);
     setIsRunning(false);
     setIsDone(true);
   }
@@ -154,63 +551,183 @@ function App() {
     setConflictState(null);
     setSelectedState(null);
     setDashboardResults([]);
+    setTraversalState(null);
   }
 
   return (
     <div className="app">
-      {/* Header */}
-      <div className="header">
-        <div className="header-title">
-          <h1>🎨 Chromatic AI</h1>
-          <span>CSP Graph Coloring</span>
+      {/* Interactive canvas background */}
+      <ParticleCanvas />
+
+      {/* Premium Glassmorphic Header */}
+      <div className="header glass-panel">
+        <div className="header-left">
+          <div className="title-area">
+            {appSection === "sandbox" && (
+              <button className="home-btn" onClick={() => setAppSection("landing")}>
+                🏡 Home Dashboard
+              </button>
+            )}
+            <h1>🎨 Chromatic AI</h1>
+            <span className="version-tag">v2.0 Premium</span>
+          </div>
+          <p className="subtitle">
+            Constraint Satisfaction Problems (CSP) & Graph Theory solver Visualizer
+          </p>
         </div>
-        <p className="header-subtitle">
-          KL Deemed to be University — CFAI Project 2025-26
-        </p>
+        <div className="header-right">
+          <div className="author-info">
+            <span className="inst">KL University • CFAI Project</span>
+            <span className="team">Srija & Snigdha</span>
+          </div>
+        </div>
       </div>
 
-      {/* Main Layout */}
-      {mode === "player" ? (
-        <div style={{ padding: "20px 24px", maxWidth: "900px", margin: "0 auto" }}>
-          <button
-            onClick={() => setMode("ai")}
-            style={{
-              marginBottom: "16px",
-              padding: "6px 14px",
-              borderRadius: "8px",
-              border: "1px solid #2d2d44",
-              background: "transparent",
-              color: "#a0aec0",
-              fontSize: "13px",
-              cursor: "pointer",
-            }}
-          >
-            Back to AI Solver
+      {/* Main View Manager */}
+      {appSection === "landing" ? (
+        <div className="landing-portal">
+          <div className="landing-header fade-in">
+            <h1 className="landing-title">CHROMATIC AI</h1>
+            <p className="landing-subtitle">
+              An Advanced Interactive Platform for Constraint Satisfaction Problems (CSP) & Graph Theory
+            </p>
+            <div className="author-banner-landing">
+              <span>KL University CSE Project</span>
+              <span className="bullet">•</span>
+              <span>Created by Chiluveru Srija & Patlolla Snigdha</span>
+            </div>
+          </div>
+
+          {/* Quick Active Graph Selection from Dashboard */}
+          <div className="card glass-panel fade-in landing-graph-picker" style={{ padding: "20px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+            <div>
+              <h4 style={{ color: "#fff", fontSize: "15px", margin: 0 }}>Select Graph Theory Model</h4>
+              <p style={{ color: "var(--text-secondary)", fontSize: "12px", margin: "4px 0 0 0" }}>Choose a realistic map or abstract graph model for solvers</p>
+            </div>
+            <select
+              value={selectedMapId}
+              onChange={(e) => setSelectedMapId(e.target.value)}
+              className="custom-select"
+              style={{ maxWidth: "250px", background: "rgba(8, 8, 15, 0.8)" }}
+            >
+              <optgroup label="Realistic Maps">
+                {Object.values(MAPS_REGISTRY).filter(m => m.category === "realistic").map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Graph Theory Models">
+                {Object.values(MAPS_REGISTRY).filter(m => m.category === "normal").map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+
+          <div className="landing-stats-grid fade-in">
+            <div className="landing-stat-card glass-panel">
+              <span className="stat-icon">🗺️</span>
+              <div>
+                <h4>{activeMapModel.states.length} Nodes</h4>
+                <p>Active Graph Regions</p>
+              </div>
+            </div>
+            <div className="landing-stat-card glass-panel">
+              <span className="stat-icon">🕸️</span>
+              <div>
+                <h4>{Object.values(activeMapModel.adjacency).reduce((sum, n) => sum + n.length, 0) / 2} Edges</h4>
+                <p>Node-Link Interconnections</p>
+              </div>
+            </div>
+            <div className="landing-stat-card glass-panel">
+              <span className="stat-icon">⚡</span>
+              <div>
+                <h4>5 Solvers</h4>
+                <p>CSP Algos & Traversals</p>
+              </div>
+            </div>
+            <div className="landing-stat-card glass-panel">
+              <span className="stat-icon">🐍</span>
+              <div>
+                <h4>Python Engine</h4>
+                <p>WASM WebAssembly sandbox</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="landing-features-grid fade-in">
+            <div className="feature-card glass-panel" onClick={() => launchSandbox("ai")}>
+              <div className="feature-card-header">
+                <span className="feature-icon font-gradient-1">🎨</span>
+                <h3>Map CSP Solver</h3>
+              </div>
+              <p>
+                Solve the k-color constraint problem step-by-step. Adjust difficulty constraints (2, 3, or 4 colors) and run Backtracking, MRV, and Forward Checking.
+              </p>
+              <button className="feature-btn">Launch Solver</button>
+            </div>
+
+            <div className="feature-card glass-panel" onClick={() => launchSandbox("traversal")}>
+              <div className="feature-card-header">
+                <span className="feature-icon font-gradient-2">🔍</span>
+                <h3>Graph Traversal</h3>
+              </div>
+              <p>
+                Traverse active networks with BFS/DFS. Powered by client-side Python, see the exact line of Python code execute as nodes light up on maps or relaxed layouts.
+              </p>
+              <button className="feature-btn">Launch Traversal</button>
+            </div>
+
+            <div className="feature-card glass-panel" onClick={() => launchSandbox("chromatic")}>
+              <div className="feature-card-header">
+                <span className="feature-icon font-gradient-3">🔢</span>
+                <h3>Chromatic Finder</h3>
+              </div>
+              <p>
+                Find the minimum colors needed for any graph model by running sequential tests for k in 1 to 4 colors, animating failures and successes.
+              </p>
+              <button className="feature-btn">Launch Finder</button>
+            </div>
+
+            <div className="feature-card glass-panel" onClick={() => launchSandbox("player")}>
+              <div className="feature-card-header">
+                <span className="feature-icon font-gradient-4">🎮</span>
+                <h3>Player VS AI Mode</h3>
+              </div>
+              <p>
+                Color the graph manually. Select a difficulty: Easy (shows hover safe indicators), Medium (standard safety), or Hard (blind color with validation submission).
+              </p>
+              <button className="feature-btn">Launch Game</button>
+            </div>
+
+            <div className="feature-card glass-panel" onClick={() => launchSandbox("exam")}>
+              <div className="feature-card-header">
+                <span className="feature-icon font-gradient-5">📅</span>
+                <h3>Exam Scheduler</h3>
+              </div>
+              <p>
+                Apply Graph Coloring to schedule university courses into minimal slots without exam conflicts for students sharing courses.
+              </p>
+              <button className="feature-btn">Launch Scheduler</button>
+            </div>
+          </div>
+        </div>
+      ) : mode === "player" ? (
+        <div className="mode-subview-container">
+          <button onClick={() => setAppSection("landing")} className="back-btn">
+            ⬅️ Back to Home Dashboard
           </button>
-          <PlayerMode />
+          <PlayerMode activeMapModel={activeMapModel} />
         </div>
       ) : mode === "exam" ? (
-        <div style={{ padding: "20px 24px", maxWidth: "900px", margin: "0 auto" }}>
-          <button
-            onClick={() => setMode("ai")}
-            style={{
-              marginBottom: "16px",
-              padding: "6px 14px",
-              borderRadius: "8px",
-              border: "1px solid #2d2d44",
-              background: "transparent",
-              color: "#a0aec0",
-              fontSize: "13px",
-              cursor: "pointer",
-            }}
-          >
-            Back to AI Solver
+        <div className="mode-subview-container">
+          <button onClick={() => setAppSection("landing")} className="back-btn">
+            ⬅️ Back to Home Dashboard
           </button>
           <ExamScheduler />
         </div>
       ) : (
         <div className="main-layout">
-          {/* Left Panel */}
+          {/* Left Panel: Control Deck and Status */}
           <div className="left-panel">
             <Controls
               selectedAlgorithm={selectedAlgorithm}
@@ -222,75 +739,66 @@ function App() {
               onStart={handleStart}
               onReset={handleReset}
               isRunning={isRunning}
+              selectedTraversal={selectedTraversal}
+              onTraversalSelect={setSelectedTraversal}
+              selectedStartState={selectedStartState}
+              onStartStateSelect={setSelectedStartState}
+              onStartChromatic={runChromaticFinderAnimation}
+              usePythonEngine={usePythonEngine}
+              onPythonEngineToggle={setUsePythonEngine}
+              pyodideStatus={pyodideStatus}
+              // Map select
+              selectedMapId={selectedMapId}
+              onMapSelect={setSelectedMapId}
+              activeMapModel={activeMapModel}
+              // Difficulty level
+              difficulty={difficulty}
+              onDifficultySelect={setDifficulty}
             />
 
-            {/* Status */}
-            <div className="card">
-              <p className="card-title">Status</p>
-              <div
-                className={
-                  "status-badge " +
-                  (isRunning ? "running" : isDone ? "done" : "idle")
-                }
-              >
-                {isRunning ? "Running..." : isDone ? "Completed!" : "Idle"}
+            {/* Status Panel */}
+            <div className="card glass-panel fade-in">
+              <p className="card-title">Console Status</p>
+              <div className="flex-row items-center gap-10">
+                <div className={"status-badge " + (isRunning ? "running" : isDone ? "done" : "idle")}>
+                  {isRunning ? "Running Simulation" : isDone ? "Solver Done" : "Console Idle"}
+                </div>
+                {mode === "compare" && isDone && (
+                  <button onClick={runCompare} className="btn-re-run">
+                    Re-run Benchmarks
+                  </button>
+                )}
               </div>
 
               {steps.length > 0 && (
-                <div style={{ marginTop: "12px" }}>
-                  <p
-                    style={{
-                      color: "#a0aec0",
-                      fontSize: "12px",
-                      margin: "0 0 6px 0",
-                    }}
-                  >
-                    Progress: {currentStep} / {steps.length}
-                  </p>
-                  <div
-                    style={{
-                      height: "4px",
-                      background: "#2d2d44",
-                      borderRadius: "2px",
-                      overflow: "hidden",
-                    }}
-                  >
+                <div className="progress-section" style={{ marginTop: "16px" }}>
+                  <div className="progress-label">
+                    <span>Playback Steps</span>
+                    <span>{currentStep} / {steps.length}</span>
+                  </div>
+                  <div className="progress-track">
                     <div
-                      style={{
-                        height: "100%",
-                        width:
-                          steps.length
-                            ? (currentStep / steps.length) * 100 + "%"
-                            : "0%",
-                        background: "#7c3aed",
-                        borderRadius: "2px",
-                        transition: "width 0.2s ease",
-                      }}
+                      className="progress-fill"
+                      style={{ width: `${(currentStep / steps.length) * 100}%` }}
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Step Log */}
-            <div className="card">
-              <p className="card-title">Step Log</p>
+            {/* Step Log Panel */}
+            <div className="card glass-panel fade-in">
+              <p className="card-title">Solver Execution Log</p>
               <div className="step-log" ref={stepLogRef}>
                 {stepLog.length === 0 ? (
-                  <p
-                    style={{
-                      color: "#4a5568",
-                      fontSize: "12px",
-                      textAlign: "center",
-                      padding: "8px",
-                    }}
-                  >
-                    Steps will appear here...
-                  </p>
+                  <p className="no-steps-placeholder">Logs will stream here upon launching solver...</p>
                 ) : (
                   stepLog.map((s, i) => (
                     <div key={i} className={"step-item " + s.type}>
-                      {s.type === "assign" ? "✓" : "↩"} {s.text}
+                      <span className="log-icon">
+                        {s.type === "assign" ? "✓" : s.type === "backtrack" ? "↩" : "⚙️"}
+                      </span>
+                      <span className="log-text">{s.text}</span>
                     </div>
                   ))
                 )}
@@ -298,7 +806,7 @@ function App() {
             </div>
           </div>
 
-          {/* Center Panel — Map */}
+          {/* Center Panel: Map Board */}
           <div className="center-panel">
             <IndiaMap
               assignments={assignments}
@@ -306,12 +814,74 @@ function App() {
               selectedState={selectedState}
               conflictState={conflictState}
               mode={mode}
+              traversalState={traversalState}
+              activeMapModel={activeMapModel}
             />
           </div>
 
-          {/* Right Panel — Dashboard */}
+          {/* Right Panel: Python Debugger & Data Structure Inspector OR Benchmarking Dashboard */}
           <div className="right-panel">
-            <Dashboard results={dashboardResults} />
+            {mode === "traversal" ? (
+              <>
+                {usePythonEngine && (
+                  <PythonDebugger
+                    algorithm={selectedTraversal}
+                    currentStepData={steps[currentStep - 1]}
+                    startState={selectedStartState}
+                  />
+                )}
+
+                {/* Traversal State Inspector (Queue/Stack & Visited) */}
+                <div className="card glass-panel traversal-inspector fade-in">
+                  <p className="card-title">Memory Data Structures</p>
+                  
+                  {/* Fringe/Open List visualizer */}
+                  <div className="inspector-group" style={{ marginBottom: "20px" }}>
+                    <label className="deck-lbl">
+                      {selectedTraversal === "bfs" ? "Queue (FIFO List)" : "Stack (LIFO List)"}
+                    </label>
+                    <div className="fringe-list flex-row">
+                      {traversalState?.fringeNodes && traversalState.fringeNodes.length > 0 ? (
+                        traversalState.fringeNodes.map((node, idx) => (
+                          <div key={idx} className="fringe-pill">
+                            <span className="fringe-idx">{idx}</span>
+                            <span className="fringe-name">{activeMapModel.abbreviations[node] || node.slice(0, 3).toUpperCase()}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="empty-indicator">Empty</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Visited Set visualizer */}
+                  <div className="inspector-group">
+                    <label className="deck-lbl">Visited States Set</label>
+                    <div className="visited-grid">
+                      {traversalState?.visitedNodes && traversalState.visitedNodes.length > 0 ? (
+                        traversalState.visitedNodes.map((node) => (
+                          <div key={node} className="visited-badge">
+                            {activeMapModel.abbreviations[node] || node.slice(0, 3).toUpperCase()}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="empty-indicator">Empty</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : mode === "compare" || dashboardResults.length > 0 ? (
+              <Dashboard results={dashboardResults} />
+            ) : (
+              <div className="card glass-panel no-dashboard-card fade-in">
+                <h3>Benchmark Dashboard</h3>
+                <p>Run CSP Solver or click "Compare All" in Solver mode to view side-by-side performance metrics.</p>
+                <button onClick={() => { setMode("ai"); runCompare(); }} className="btn-dashboard-action">
+                  📊 Run Comparison Benchmarks
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

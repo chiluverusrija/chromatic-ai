@@ -1,10 +1,8 @@
 import indiaAdjacency from "../data/indiaAdjacency.js";
 
-const COLORS = ["red", "green", "blue", "yellow"];
-
 // Check if a color is safe to assign to a state
-function isSafe(state, color, assignments) {
-  const neighbors = indiaAdjacency[state] || [];
+function isSafe(state, color, assignments, adjacency) {
+  const neighbors = adjacency[state] || [];
   for (let neighbor of neighbors) {
     if (assignments[neighbor] === color) {
       return false;
@@ -14,33 +12,30 @@ function isSafe(state, color, assignments) {
 }
 
 // Count how many valid colors remain for a state
-function remainingValues(state, assignments) {
-  return COLORS.filter((color) => isSafe(state, color, assignments)).length;
+function remainingValues(state, assignments, adjacency, colors) {
+  return colors.filter((color) => isSafe(state, color, assignments, adjacency)).length;
 }
 
 // MRV — pick the state with fewest valid colors remaining
-function selectMRVState(states, assignments) {
+function selectMRVState(states, assignments, adjacency, colors) {
   const unassigned = states.filter((s) => !assignments[s]);
   return unassigned.reduce((minState, state) => {
-    const minRemaining = remainingValues(minState, assignments);
-    const stateRemaining = remainingValues(state, assignments);
+    const minRemaining = remainingValues(minState, assignments, adjacency, colors);
+    const stateRemaining = remainingValues(state, assignments, adjacency, colors);
     return stateRemaining < minRemaining ? state : minState;
   });
 }
 
 // Core MRV Backtracking Algorithm
-function mrvBacktrack(states, assignments = {}, steps = []) {
-  // If all states assigned we are done
+function mrvBacktrack(states, assignments = {}, steps = [], adjacency, colors) {
   if (Object.keys(assignments).length === states.length) {
     return { success: true, assignments, steps };
   }
 
-  // Pick the most constrained state
-  const state = selectMRVState(states, assignments);
+  const state = selectMRVState(states, assignments, adjacency, colors);
 
-  for (let color of COLORS) {
-    if (isSafe(state, color, assignments)) {
-      // Assign color
+  for (let color of colors) {
+    if (isSafe(state, color, assignments, adjacency)) {
       assignments[state] = color;
       steps.push({
         state,
@@ -49,8 +44,7 @@ function mrvBacktrack(states, assignments = {}, steps = []) {
         snapshot: { ...assignments },
       });
 
-      // Recurse
-      const result = mrvBacktrack(states, assignments, steps);
+      const result = mrvBacktrack(states, assignments, steps, adjacency, colors);
       if (result.success) return result;
 
       // Backtrack
@@ -68,10 +62,10 @@ function mrvBacktrack(states, assignments = {}, steps = []) {
 }
 
 // Run MRV and return result with performance stats
-export function runMRV(states) {
+export function runMRV(states, adjacency = indiaAdjacency, colors = ["red", "green", "blue", "yellow"]) {
   const startTime = performance.now();
   const steps = [];
-  const result = mrvBacktrack([...states], {}, steps);
+  const result = mrvBacktrack([...states], {}, steps, adjacency, colors);
   const endTime = performance.now();
 
   return {

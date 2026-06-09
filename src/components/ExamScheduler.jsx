@@ -14,7 +14,7 @@ const SUBJECTS = [
   "Chemistry",
 ];
 
-// Subjects that share students — they can't be in same slot
+// Subjects that share students — they can't be in the same slot
 const SUBJECT_CONFLICTS = {
   CFAI:      ["DBMS", "OS", "Maths"],
   DBMS:      ["CFAI", "OS", "CN", "DS"],
@@ -29,10 +29,10 @@ const SUBJECT_CONFLICTS = {
 };
 
 const SLOT_COLORS = {
-  1: { bg: "#2d1f5e", text: "#a78bfa", label: "Slot 1 — Monday" },
-  2: { bg: "#1a2e1a", text: "#68D391", label: "Slot 2 — Tuesday" },
-  3: { bg: "#2e1a1a", text: "#FC8181", label: "Slot 3 — Wednesday" },
-  4: { bg: "#2e2a1a", text: "#F6E05E", label: "Slot 4 — Thursday" },
+  1: { bg: "rgba(124, 58, 237, 0.15)", text: "#a78bfa", border: "#7c3aed", label: "Slot 1 — Monday" },
+  2: { bg: "rgba(16, 185, 129, 0.15)", text: "#68D391", border: "#10b981", label: "Slot 2 — Tuesday" },
+  3: { bg: "rgba(239, 68, 68, 0.15)", text: "#FC8181", border: "#ef4444", label: "Slot 3 — Wednesday" },
+  4: { bg: "rgba(245, 158, 11, 0.15)", text: "#F6E05E", border: "#f59e0b", label: "Slot 4 — Thursday" },
 };
 
 // Check if slot is safe for subject
@@ -71,12 +71,14 @@ function ExamScheduler() {
   const [isRunning, setIsRunning] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [activeSubject, setActiveSubject] = useState(null);
 
   function handleGenerate() {
     setIsRunning(true);
     setIsDone(false);
     setSchedule({});
     setCurrentStep(0);
+    setActiveSubject(null);
 
     const result = scheduleExams([...SUBJECTS], {}, []);
     const allSteps = result.steps;
@@ -90,10 +92,12 @@ function ExamScheduler() {
         setSchedule(result.assignments);
         setIsRunning(false);
         setIsDone(true);
+        setActiveSubject(null);
         return;
       }
 
       const step = allSteps[i];
+      setActiveSubject(step.subject);
       if (step.type === "assign") {
         setSchedule((prev) => ({ ...prev, [step.subject]: step.slot }));
       } else {
@@ -114,6 +118,7 @@ function ExamScheduler() {
     setIsRunning(false);
     setIsDone(false);
     setCurrentStep(0);
+    setActiveSubject(null);
   }
 
   // Group subjects by slot
@@ -124,211 +129,128 @@ function ExamScheduler() {
   });
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-        padding: "16px",
-        background: "#1a1a2e",
-        borderRadius: "12px",
-        border: "1px solid #2d2d44",
-      }}
-    >
-      {/* Header */}
-      <div>
-        <p
-          style={{
-            color: "#e2e8f0",
-            fontSize: "16px",
-            fontWeight: "600",
-            margin: "0 0 4px 0",
-          }}
-        >
-          Exam Scheduler
-        </p>
-        <p style={{ color: "#4a5568", fontSize: "12px", margin: 0 }}>
-          Same CSP algorithm — subjects with common students get different slots
-        </p>
-      </div>
-
-      {/* Conflict Graph Info */}
-      <div
-        style={{
-          background: "#0d0d1a",
-          borderRadius: "8px",
-          padding: "12px",
-          border: "1px solid #2d2d44",
-        }}
-      >
-        <p
-          style={{
-            color: "#a0aec0",
-            fontSize: "11px",
-            fontWeight: "600",
-            textTransform: "uppercase",
-            margin: "0 0 8px 0",
-          }}
-        >
-          Subjects — KL University CSE
-        </p>
-        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-          {SUBJECTS.map((subject) => (
-            <span
-              key={subject}
-              style={{
-                padding: "3px 10px",
-                borderRadius: "20px",
-                fontSize: "12px",
-                background: schedule[subject]
-                  ? SLOT_COLORS[schedule[subject]].bg
-                  : "#1a1a2e",
-                color: schedule[subject]
-                  ? SLOT_COLORS[schedule[subject]].text
-                  : "#4a5568",
-                border: "1px solid",
-                borderColor: schedule[subject]
-                  ? SLOT_COLORS[schedule[subject]].text
-                  : "#2d2d44",
-                transition: "all 0.3s ease",
-              }}
-            >
-              {subject}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div style={{ display: "flex", gap: "10px" }}>
-        <button
-          onClick={handleGenerate}
-          disabled={isRunning}
-          style={{
-            flex: 1,
-            padding: "10px",
-            borderRadius: "8px",
-            border: "none",
-            background: isRunning ? "#2d2d44" : "#7c3aed",
-            color: isRunning ? "#718096" : "white",
-            fontSize: "14px",
-            fontWeight: "600",
-            cursor: isRunning ? "not-allowed" : "pointer",
-            transition: "all 0.2s ease",
-          }}
-        >
-          {isRunning ? "Scheduling..." : "Generate Schedule"}
-        </button>
-        <button
-          onClick={handleReset}
-          style={{
-            flex: 1,
-            padding: "10px",
-            borderRadius: "8px",
-            border: "1px solid #2d2d44",
-            background: "transparent",
-            color: "#a0aec0",
-            fontSize: "14px",
-            fontWeight: "600",
-            cursor: "pointer",
-          }}
-        >
-          Reset
-        </button>
-      </div>
-
-      {/* Progress */}
-      {isRunning && (
-        <div>
-          <p style={{ color: "#a0aec0", fontSize: "12px", margin: "0 0 6px 0" }}>
-            Steps: {currentStep} / {steps.length}
+    <div className="exam-scheduler-container glass-panel fade-in">
+      <div className="panel-header">
+        <div className="title-desc">
+          <h3>KL University CSE Exam Scheduler</h3>
+          <p className="subtitle-desc">
+            Solving real-world scheduling conflicts using Graph Coloring CSP backtracks.
           </p>
-          <div
-            style={{
-              height: "4px",
-              background: "#2d2d44",
-              borderRadius: "2px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: steps.length
-                  ? (currentStep / steps.length) * 100 + "%"
-                  : "0%",
-                background: "#7c3aed",
-                borderRadius: "2px",
-                transition: "width 0.2s ease",
-              }}
-            />
-          </div>
         </div>
-      )}
+        <span className="badge">CSP SCHEDULER</span>
+      </div>
 
-      {/* Final Schedule */}
-      {isDone && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px",
-          }}
-        >
-          <p
-            style={{
-              color: "#68D391",
-              fontSize: "13px",
-              fontWeight: "600",
-              margin: 0,
-            }}
-          >
-            Schedule generated using {new Set(Object.values(schedule)).size} slots!
-          </p>
+      {/* Grid containing subjects on left, schedule slots on right */}
+      <div className="scheduler-layout">
+        {/* Left Side: Subject Nodes Panel */}
+        <div className="scheduler-subjects-card">
+          <label className="deck-lbl">Course Subject Registry</label>
+          <div className="subjects-grid">
+            {SUBJECTS.map((subject) => {
+              const assignedSlot = schedule[subject];
+              const slotStyle = assignedSlot ? SLOT_COLORS[assignedSlot] : null;
+              const isActive = activeSubject === subject;
 
-          {[1, 2, 3, 4].map((slot) =>
-            slotGroups[slot] ? (
-              <div
-                key={slot}
-                style={{
-                  background: SLOT_COLORS[slot].bg,
-                  borderRadius: "8px",
-                  padding: "10px 14px",
-                  border: "1px solid",
-                  borderColor: SLOT_COLORS[slot].text,
-                }}
-              >
-                <p
+              return (
+                <div
+                  key={subject}
+                  className={`subject-pill ${isActive ? "active" : ""}`}
                   style={{
-                    color: SLOT_COLORS[slot].text,
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    margin: "0 0 6px 0",
+                    backgroundColor: slotStyle ? slotStyle.bg : "#181829",
+                    color: slotStyle ? slotStyle.text : "#718096",
+                    borderColor: isActive ? "#7c3aed" : slotStyle ? slotStyle.border : "#2d2d44",
+                    borderWidth: "1px",
+                    borderStyle: "solid",
                   }}
                 >
-                  {SLOT_COLORS[slot].label}
-                </p>
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {slotGroups[slot].map((subject) => (
-                    <span
-                      key={subject}
-                      style={{
-                        padding: "2px 10px",
-                        borderRadius: "20px",
-                        fontSize: "12px",
-                        background: "#0d0d1a",
-                        color: SLOT_COLORS[slot].text,
-                      }}
-                    >
-                      {subject}
+                  <span className="subj-title">{subject}</span>
+                  {assignedSlot && (
+                    <span className="subj-slot" style={{ background: slotStyle.border }}>
+                      S{assignedSlot}
                     </span>
-                  ))}
+                  )}
                 </div>
+              );
+            })}
+          </div>
+
+          <div className="divider-h" />
+
+          {/* Action Row */}
+          <div className="flex-row gap-10">
+            <button
+              onClick={handleGenerate}
+              disabled={isRunning}
+              className={`btn-action primary-glow ${isRunning ? "disabled" : ""}`}
+              style={{ flex: 1 }}
+            >
+              {isRunning ? "Running CSP Solver..." : "🗓️ Generate Conflict-Free Schedule"}
+            </button>
+            <button onClick={handleReset} className="btn-action reset-btn-outline" style={{ flex: 0.3 }}>
+              Reset
+            </button>
+          </div>
+
+          {/* Progress Slider */}
+          {isRunning && (
+            <div className="progress-section" style={{ marginTop: "16px" }}>
+              <div className="progress-label">
+                <span>Scheduling Step Progression</span>
+                <span>{currentStep} / {steps.length} Actions</span>
               </div>
-            ) : null
+              <div className="progress-track">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${(currentStep / steps.length) * 100}%` }}
+                />
+              </div>
+            </div>
           )}
         </div>
-      )}
+
+        {/* Right Side: Schedule Output Slots */}
+        <div className="scheduler-slots-card">
+          <label className="deck-lbl">Timetable Slots Assignment</label>
+          <div className="slots-container">
+            {[1, 2, 3, 4].map((slot) => {
+              const group = slotGroups[slot] || [];
+              const style = SLOT_COLORS[slot];
+
+              return (
+                <div
+                  key={slot}
+                  className="slot-card"
+                  style={{
+                    backgroundColor: style.bg,
+                    border: `1px solid ${style.border}`,
+                  }}
+                >
+                  <div className="slot-header">
+                    <span className="slot-title" style={{ color: style.text }}>
+                      {style.label}
+                    </span>
+                    <span className="slot-count">{group.length} subjects</span>
+                  </div>
+                  {group.length === 0 ? (
+                    <p className="no-subjects">No exams scheduled in this slot yet</p>
+                  ) : (
+                    <div className="slot-subjects-list">
+                      {group.map((subject) => (
+                        <div key={subject} className="slot-subject-item">
+                          <span className="subj-code">{subject}</span>
+                          <span className="subj-conflicts-lbl">
+                            Conflicts: {SUBJECT_CONFLICTS[subject].join(", ")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

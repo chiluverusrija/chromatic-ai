@@ -120,19 +120,22 @@ function Dashboard({ results }) {
         >
           Nodes Explored
         </p>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={nodesData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2d2d44" />
-            <XAxis dataKey="name" tick={{ fill: "#a0aec0", fontSize: 11 }} />
-            <YAxis tick={{ fill: "#a0aec0", fontSize: 11 }} />
-            <Tooltip
-              contentStyle={{ background: "#0d0d1a", border: "1px solid #2d2d44" }}
-              labelStyle={{ color: "#e2e8f0" }}
-            />
-            <Bar dataKey="Nodes Explored" fill="#7c3aed" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div style={{ height: "180px", width: "100%" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={nodesData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2d2d44" />
+              <XAxis dataKey="name" tick={{ fill: "#a0aec0", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#a0aec0", fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ background: "#0d0d1a", border: "1px solid #2d2d44" }}
+                labelStyle={{ color: "#e2e8f0" }}
+              />
+              <Bar dataKey="Nodes Explored" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
+
        {/* Backtracks Chart */}
       <div>
         <p
@@ -145,18 +148,20 @@ function Dashboard({ results }) {
         >
           Backtracks
         </p>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={backtracksData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2d2d44" />
-            <XAxis dataKey="name" tick={{ fill: "#a0aec0", fontSize: 11 }} />
-            <YAxis tick={{ fill: "#a0aec0", fontSize: 11 }} />
-            <Tooltip
-              contentStyle={{ background: "#0d0d1a", border: "1px solid #2d2d44" }}
-              labelStyle={{ color: "#e2e8f0" }}
-            />
-            <Bar dataKey="Backtracks" fill="#e53e3e" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div style={{ height: "180px", width: "100%" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={backtracksData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2d2d44" />
+              <XAxis dataKey="name" tick={{ fill: "#a0aec0", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#a0aec0", fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ background: "#0d0d1a", border: "1px solid #2d2d44" }}
+                labelStyle={{ color: "#e2e8f0" }}
+              />
+              <Bar dataKey="Backtracks" fill="#e53e3e" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Time Taken Chart */}
@@ -171,18 +176,20 @@ function Dashboard({ results }) {
         >
           Time Taken (ms)
         </p>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={timeData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2d2d44" />
-            <XAxis dataKey="name" tick={{ fill: "#a0aec0", fontSize: 11 }} />
-            <YAxis tick={{ fill: "#a0aec0", fontSize: 11 }} />
-            <Tooltip
-              contentStyle={{ background: "#0d0d1a", border: "1px solid #2d2d44" }}
-              labelStyle={{ color: "#e2e8f0" }}
-            />
-            <Bar dataKey="Time (ms)" fill="#38a169" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div style={{ height: "180px", width: "100%" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={timeData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2d2d44" />
+              <XAxis dataKey="name" tick={{ fill: "#a0aec0", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#a0aec0", fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ background: "#0d0d1a", border: "1px solid #2d2d44" }}
+                labelStyle={{ color: "#e2e8f0" }}
+              />
+              <Bar dataKey="Time (ms)" fill="#38a169" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
