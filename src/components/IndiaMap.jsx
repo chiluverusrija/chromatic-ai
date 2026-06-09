@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 const COLOR_MAP = {
   red: "#FF6B6B",
@@ -38,9 +38,19 @@ function IndiaMap({
   conflictState,
   mode,
   traversalState = null, // { activeNode, visitedNodes, fringeNodes, activeEdge }
-  activeMapModel
+  activeMapModel,
+  raceState = null, // { isRace: true, solvers: { backtracking: ..., mrv: ..., forwardChecking: ... } }
 }) {
-  const [viewType, setViewType] = useState("overlay"); // "map", "graph", "overlay"
+  const [viewType, setViewType] = useState(activeMapModel.type === "map" ? "overlay" : "map"); // "map", "graph", "overlay"
+
+  // Reset viewType when active map/graph changes to prevent layout bugs
+  useEffect(() => {
+    if (activeMapModel.type === "map") {
+      setViewType("overlay");
+    } else {
+      setViewType("map"); // geometric layout
+    }
+  }, [activeMapModel.id]);
 
   const states = activeMapModel.states || [];
   const paths = activeMapModel.paths || {};
@@ -70,7 +80,6 @@ function IndiaMap({
     if (viewType === "graph") {
       return activeMapModel.graphCoordinates[state] || { x: 200, y: 250 };
     }
-    // Default view: maps use computed centroids, normal graphs use mapCoordinates
     if (activeMapModel.type === "map") {
       return centroids[state] || { x: 200, y: 250 };
     }
@@ -96,24 +105,258 @@ function IndiaMap({
   }, [activeMapModel]);
 
   // Helper to determine node/state color during traversals or standard CSP
-  function getStateColor(state) {
-    if (traversalState) {
-      const { activeNode, visitedNodes = [], fringeNodes = [] } = traversalState;
+  function getStateColor(state, currentAssignments, currentTraversalState) {
+    if (currentTraversalState) {
+      const { activeNode, visitedNodes = [], fringeNodes = [] } = currentTraversalState;
       if (state === activeNode) return "#7c3aed"; // Active node = Purple
       if (visitedNodes.includes(state)) return "#4f46e5"; // Visited = Deep Indigo
       if (fringeNodes.includes(state)) return "#ea580c"; // Fringe/Queue = Orange
       return "#374151"; // Unvisited = Dark Grey
     }
 
-    if (assignments[state]) {
-      return COLOR_MAP[assignments[state]] || COLOR_MAP.default;
+    if (currentAssignments[state]) {
+      return COLOR_MAP[currentAssignments[state]] || COLOR_MAP.default;
     }
 
     return COLOR_MAP.default;
   }
 
   const isMapModel = activeMapModel.type === "map";
+  const isRaceMode = raceState && raceState.isRace;
 
+  // Reusable sub-renderer for active graph SVGs
+  const renderSVGBoard = (currentAssignments, currentConflictState, currentTraversalState, isMini = false) => {
+    const boardClass = isMini ? "mini-svg-board" : "india-svg-board";
+    
+    return (
+      <svg viewBox="0 0 400 500" className={boardClass}>
+        <defs>
+          <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+          <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        {/* 1. Map Layers (Only for Realistic maps) */}
+        {isMapModel && (viewType === "map" || viewType === "overlay") && (
+          <g className="map-group">
+            {states.map((state) => {
+              const isSelected = selectedState === state;
+              const isConflict = currentConflictState === state;
+              const baseColor = getStateColor(state, currentAssignments, currentTraversalState);
+
+              return (
+                <path
+                  key={state}
+                  d={paths[state]}
+                  fill={isConflict ? "#EF4444" : baseColor}
+                  stroke={isSelected ? "#FFF" : "#2D3748"}
+                  strokeWidth={isSelected ? "2.5" : "0.8"}
+                  opacity={viewType === "overlay" ? 0.35 : 1}
+                  className={`state-path ${mode === "player" ? "interactive" : ""}`}
+                  onClick={() => !isMini && onStateClick && onStateClick(state)}
+                  style={{
+                    transition: "fill 0.4s ease, opacity 0.3s ease",
+                  }}
+                >
+                  <title>{state}</title>
+                </path>
+              );
+            })}
+          </g>
+        )}
+
+        {/* 2. Graph Edges */}
+        {(!isMapModel || viewType === "graph" || viewType === "overlay") && (
+          <g className="edges-group">
+            {edges.map((edge, idx) => {
+              const uPos = getNodePosition(edge.from);
+              const vPos = getNodePosition(edge.to);
+              if (!uPos || !vPos) return null;
+
+              const isActiveEdge =
+                currentTraversalState?.activeEdge &&
+                ((currentTraversalState.activeEdge.from === edge.from &&
+                  currentTraversalState.activeEdge.to === edge.to) ||
+                  (currentTraversalState.activeEdge.from === edge.to &&
+                    currentTraversalState.activeEdge.to === edge.from));
+
+              return (
+                <line
+                  key={idx}
+                  x1={uPos.x}
+                  y1={uPos.y}
+                  x2={vPos.x}
+                  y2={vPos.y}
+                  stroke={isActiveEdge ? "#7c3aed" : "#4b5563"}
+                  strokeWidth={isActiveEdge ? "3.5" : "1.2"}
+                  opacity={isActiveEdge ? 1 : 0.3}
+                  className="graph-edge-line"
+                />
+              );
+            })}
+          </g>
+        )}
+
+        {/* 3. Graph Nodes */}
+        {(!isMapModel || viewType === "graph" || viewType === "overlay") && (
+          <g className="nodes-group">
+            {states.map((state) => {
+              const pos = getNodePosition(state);
+              if (!pos) return null;
+
+              const nodeColor = getStateColor(state, currentAssignments, currentTraversalState);
+              const isSelected = selectedState === state;
+              const isConflict = currentConflictState === state;
+              const isActiveNode = currentTraversalState?.activeNode === state;
+
+              // Scale down nodes for mini-maps
+              const nodeScale = isMini ? 0.75 : 1.0;
+              const isBigNode = !isMapModel || viewType === "graph";
+              const r = (isBigNode ? 14 : (isSelected ? 7 : isActiveNode ? 6.5 : 5)) * nodeScale;
+
+              return (
+                <g key={state} className="node-element" onClick={() => !isMini && onStateClick && onStateClick(state)}>
+                  {(isActiveNode || isConflict) && (
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={r + 4.5}
+                      fill="none"
+                      stroke={isConflict ? "#EF4444" : "#a78bfa"}
+                      strokeWidth="2.5"
+                      className="pulse"
+                    />
+                  )}
+                  <circle
+                    cx={pos.x}
+                    cy={pos.y}
+                    r={r}
+                    fill={isConflict ? "#EF4444" : nodeColor}
+                    stroke={isSelected ? "#FFFFFF" : "#111827"}
+                    strokeWidth={isSelected ? "2.5" : "1"}
+                    className="graph-node-dot"
+                    filter={isActiveNode || isConflict ? "url(#node-glow)" : "none"}
+                  />
+                  
+                  <text
+                    x={pos.x}
+                    y={pos.y + 3.5 * nodeScale}
+                    textAnchor="middle"
+                    fill="#FFFFFF"
+                    fontSize={`${9 * nodeScale}px`}
+                    fontWeight="700"
+                    className="node-abbr"
+                    pointerEvents="none"
+                  >
+                    {ABBREVIATIONS[state] || state.slice(0, 2).toUpperCase()}
+                  </text>
+
+                  {isBigNode && !isMini && (
+                    <text
+                      x={pos.x}
+                      y={pos.y + 24}
+                      textAnchor="middle"
+                      fill="#9ca3af"
+                      fontSize="7.5px"
+                      fontWeight="600"
+                      className="node-label-sub"
+                      pointerEvents="none"
+                    >
+                      {state}
+                    </text>
+                  )}
+                  
+                  <title>{state}</title>
+                </g>
+              );
+            })}
+          </g>
+        )}
+      </svg>
+    );
+  };
+
+  // Algorithm Derby Live Split-Screen View
+  if (isRaceMode) {
+    return (
+      <div className="india-map-card glass-panel fade-in race-board-card">
+        <div className="panel-header">
+          <div className="title-desc">
+            <h3>Algorithm Derby Arena</h3>
+            <p className="subtitle-desc">
+              Watch Backtracking, MRV Heuristic, and Forward Checking solvers run concurrently
+            </p>
+          </div>
+        </div>
+
+        <div className="race-split-container">
+          {Object.entries(raceState.solvers).map(([id, solver]) => {
+            const solverTitle =
+              id === "backtracking"
+                ? "Backtracking"
+                : id === "mrv"
+                ? "MRV Heuristic"
+                : "Forward Checking";
+
+            const podiumIcon =
+              solver.rank === 1
+                ? "🏆 1st (FASTEST)"
+                : solver.rank === 2
+                ? "🥈 2nd Place"
+                : solver.rank === 3
+                ? "🥉 3rd Place"
+                : solver.done
+                ? "✅ Completed"
+                : "⚡ Running...";
+
+            const badgeClass =
+              solver.rank === 1
+                ? "rank-1"
+                : solver.rank === 2
+                ? "rank-2"
+                : solver.rank === 3
+                ? "rank-3"
+                : "rank-running";
+
+            return (
+              <div key={id} className="race-column glass-panel">
+                <div className="race-column-header">
+                  <h4>{solverTitle}</h4>
+                  <span className={`race-badge ${badgeClass}`}>{podiumIcon}</span>
+                </div>
+                
+                <div className="race-svg-wrapper">
+                  {renderSVGBoard(solver.assignments, solver.conflictState, null, true)}
+                </div>
+
+                <div className="race-stats">
+                  <div className="race-stat-row">
+                    <span>Nodes Explored:</span>
+                    <strong>{solver.explored}</strong>
+                  </div>
+                  <div className="race-stat-row">
+                    <span>Backtracks:</span>
+                    <strong>{solver.backtracks}</strong>
+                  </div>
+                  <div className="race-stat-row">
+                    <span>Elapsed Time:</span>
+                    <strong>{solver.time} ms</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Standard Single Board View
   return (
     <div className="india-map-card glass-panel fade-in">
       <div className="panel-header">
@@ -126,7 +369,6 @@ function IndiaMap({
           </p>
         </div>
 
-        {/* Dynamic View Toggles based on Graph Category */}
         <div className="view-toggle">
           {isMapModel ? (
             <>
@@ -169,157 +411,7 @@ function IndiaMap({
       </div>
 
       <div className="svg-container">
-        <svg viewBox="0 0 400 500" className="india-svg-board">
-          <defs>
-            <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="6" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-            <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-
-          {/* 1. Map Layers (Only rendered for Realistic Maps in Map & Overlay view) */}
-          {isMapModel && (viewType === "map" || viewType === "overlay") && (
-            <g className="map-group">
-              {states.map((state) => {
-                const isSelected = selectedState === state;
-                const isConflict = conflictState === state;
-                const baseColor = getStateColor(state);
-
-                return (
-                  <path
-                    key={state}
-                    d={paths[state]}
-                    fill={isConflict ? "#EF4444" : baseColor}
-                    stroke={isSelected ? "#FFF" : "#2D3748"}
-                    strokeWidth={isSelected ? "2.5" : "0.8"}
-                    opacity={viewType === "overlay" ? 0.35 : 1}
-                    className={`state-path ${mode === "player" ? "interactive" : ""}`}
-                    onClick={() => onStateClick && onStateClick(state)}
-                    style={{
-                      transition: "fill 0.4s ease, opacity 0.3s ease",
-                    }}
-                  >
-                    <title>{state}</title>
-                  </path>
-                );
-              })}
-            </g>
-          )}
-
-          {/* 2. Graph Edges (Rendered always for normal graphs, or in Graph/Overlay view for maps) */}
-          {(!isMapModel || viewType === "graph" || viewType === "overlay") && (
-            <g className="edges-group">
-              {edges.map((edge, idx) => {
-                const uPos = getNodePosition(edge.from);
-                const vPos = getNodePosition(edge.to);
-                if (!uPos || !vPos) return null;
-
-                // Highlight active traversal edge
-                const isActiveEdge =
-                  traversalState?.activeEdge &&
-                  ((traversalState.activeEdge.from === edge.from &&
-                    traversalState.activeEdge.to === edge.to) ||
-                    (traversalState.activeEdge.from === edge.to &&
-                      traversalState.activeEdge.to === edge.from));
-
-                return (
-                  <line
-                    key={idx}
-                    x1={uPos.x}
-                    y1={uPos.y}
-                    x2={vPos.x}
-                    y2={vPos.y}
-                    stroke={isActiveEdge ? "#7c3aed" : "#4b5563"}
-                    strokeWidth={isActiveEdge ? "3.5" : "1.2"}
-                    opacity={isActiveEdge ? 1 : 0.3}
-                    className="graph-edge-line"
-                  />
-                );
-              })}
-            </g>
-          )}
-
-          {/* 3. Graph Nodes (Rendered always for normal graphs, or in Graph/Overlay view for maps) */}
-          {(!isMapModel || viewType === "graph" || viewType === "overlay") && (
-            <g className="nodes-group">
-              {states.map((state) => {
-                const pos = getNodePosition(state);
-                if (!pos) return null;
-
-                const nodeColor = getStateColor(state);
-                const isSelected = selectedState === state;
-                const isConflict = conflictState === state;
-                const isActiveNode = traversalState?.activeNode === state;
-
-                // Larger nodes for normal graphs or in relaxed Graph mode
-                const isBigNode = !isMapModel || viewType === "graph";
-                const r = isBigNode ? 14 : (isSelected ? 7 : isActiveNode ? 6.5 : 5);
-
-                return (
-                  <g key={state} className="node-element" onClick={() => onStateClick && onStateClick(state)}>
-                    {(isActiveNode || isConflict) && (
-                      <circle
-                        cx={pos.x}
-                        cy={pos.y}
-                        r={r + 4.5}
-                        fill="none"
-                        stroke={isConflict ? "#EF4444" : "#a78bfa"}
-                        strokeWidth="2.5"
-                        className="pulse"
-                      />
-                    )}
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={r}
-                      fill={isConflict ? "#EF4444" : nodeColor}
-                      stroke={isSelected ? "#FFFFFF" : "#111827"}
-                      strokeWidth={isSelected ? "2.5" : "1"}
-                      className="graph-node-dot"
-                      filter={isActiveNode || isConflict ? "url(#node-glow)" : "none"}
-                    />
-                    
-                    {/* State Abbreviation inside Node */}
-                    <text
-                      x={pos.x}
-                      y={pos.y + 3.5}
-                      textAnchor="middle"
-                      fill="#FFFFFF"
-                      fontSize="9px"
-                      fontWeight="700"
-                      className="node-abbr"
-                      pointerEvents="none"
-                    >
-                      {ABBREVIATIONS[state] || state.slice(0, 2).toUpperCase()}
-                    </text>
-
-                    {/* State Full Name beneath Node (Graph / Geometric View Only) */}
-                    {isBigNode && (
-                      <text
-                        x={pos.x}
-                        y={pos.y + 24}
-                        textAnchor="middle"
-                        fill="#9ca3af"
-                        fontSize="7.5px"
-                        fontWeight="600"
-                        className="node-label-sub"
-                        pointerEvents="none"
-                      >
-                        {state}
-                      </text>
-                    )}
-                    
-                    <title>{state}</title>
-                  </g>
-                );
-              })}
-            </g>
-          )}
-        </svg>
+        {renderSVGBoard(assignments, conflictState, traversalState, false)}
       </div>
 
       {/* Legend and Info panel */}

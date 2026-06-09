@@ -1,7 +1,7 @@
 import indiaAdjacency from "../data/indiaAdjacency.js";
 
 // BFS Traversal
-export function runBFS(startState, states) {
+export function runBFS(startState, states, adjacency) {
   const steps = [];
   const visited = new Set();
   const queue = [];
@@ -37,7 +37,7 @@ export function runBFS(startState, states) {
       log: `Visiting state: ${current}`
     });
 
-    const neighbors = indiaAdjacency[current] || [];
+    const neighbors = (adjacency || indiaAdjacency)[current] || [];
     for (const neighbor of neighbors) {
       if (!visited.has(neighbor)) {
         visited.add(neighbor);
@@ -72,7 +72,7 @@ export function runBFS(startState, states) {
 }
 
 // DFS Traversal
-export function runDFS(startState, states) {
+export function runDFS(startState, states, adjacency) {
   const steps = [];
   const visited = new Set();
   const stack = [];
@@ -118,7 +118,7 @@ export function runDFS(startState, states) {
       log: `Visiting state (popped from stack): ${current}`
     });
 
-    const neighbors = indiaAdjacency[current] || [];
+    const neighbors = (adjacency || indiaAdjacency)[current] || [];
     // We reverse neighbors before pushing so they get popped in their original order
     const reversedNeighbors = [...neighbors].reverse();
 

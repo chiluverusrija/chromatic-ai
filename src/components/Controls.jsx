@@ -23,6 +23,7 @@ const MODES = [
   { id: "ai", label: "🎨 Map CSP Solver" },
   { id: "traversal", label: "🔍 Graph Traversal" },
   { id: "chromatic", label: "🔢 Chromatic Finder" },
+  { id: "compare", label: "🏁 Algorithm Derby" },
   { id: "player", label: "🎮 Player vs AI" },
   { id: "exam", label: "📅 Exam Scheduler" },
 ];
@@ -55,6 +56,9 @@ function Controls({
   // Difficulty props
   difficulty,
   onDifficultySelect,
+  // Teach Mode props
+  narratedTeachMode,
+  onNarratedTeachModeToggle,
 }) {
   return (
     <div className="controls-card glass-panel fade-in">
@@ -230,23 +234,57 @@ function Controls({
         </div>
       )}
 
+      {selectedMode === "compare" && (
+        <div className="control-group info-banner" style={{ background: "rgba(124, 58, 237, 0.08)", borderColor: "rgba(124, 58, 237, 0.2)", color: "#c084fc" }}>
+          <p>
+            🏎️ The Algorithm Derby runs three solvers (Backtracking, MRV Heuristic, Forward Checking) simultaneously to color the active graph in a live race!
+          </p>
+        </div>
+      )}
+
       {/* Simulation Speed Control */}
       {selectedMode !== "player" && selectedMode !== "exam" && (
-        <div className="control-group">
-          <label className="deck-lbl">Simulation Speed</label>
-          <div className="speed-grid">
-            {SPEEDS.map((sp) => (
-              <button
-                key={sp.id}
-                onClick={() => onSpeedSelect(sp)}
-                disabled={isRunning}
-                className={`speed-btn ${selectedSpeed.id === sp.id ? "active" : ""}`}
-              >
-                {sp.label}
-              </button>
-            ))}
+        <>
+          <div className="control-group">
+            <label className="deck-lbl">Simulation Speed</label>
+            <div className="speed-grid">
+              {SPEEDS.map((sp) => (
+                <button
+                  key={sp.id}
+                  onClick={() => onSpeedSelect(sp)}
+                  disabled={isRunning}
+                  className={`speed-btn ${selectedSpeed.id === sp.id ? "active" : ""}`}
+                >
+                  {sp.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+
+          {/* Educational Teach Mode Toggle */}
+          <div className="control-group python-toggle-group" style={{ background: "rgba(59, 130, 246, 0.05)", borderColor: "rgba(59, 130, 246, 0.15)", marginTop: "12px" }}>
+            <div className="flex-row items-center justify-between" style={{ display: "flex", justifyContent: "space-between", width: "100%", margin: "4px 0" }}>
+              <label className="deck-lbl" style={{ margin: 0, cursor: "pointer" }} htmlFor="teach-mode-check">
+                📖 Narrated Teach Mode
+              </label>
+              <div className="switch-wrapper">
+                <input
+                  type="checkbox"
+                  id="teach-mode-check"
+                  checked={narratedTeachMode}
+                  onChange={(e) => onNarratedTeachModeToggle(e.target.checked)}
+                  disabled={isRunning}
+                  style={{ cursor: "pointer" }}
+                />
+              </div>
+            </div>
+            {narratedTeachMode && (
+              <span className="difficulty-info-lbl" style={{ fontSize: "10px", color: "#60a5fa", display: "block", marginTop: "4px", lineHeight: "1.3" }}>
+                🎓 AI Tutor will explain variable selections, backtrack reasons, and pruning actions in natural language.
+              </span>
+            )}
+          </div>
+        </>
       )}
 
       <div className="divider-h" />

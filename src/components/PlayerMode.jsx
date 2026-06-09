@@ -95,6 +95,12 @@ function PlayerMode({ activeMapModel }) {
     return neighbors.some((n) => currentAssignments[n] === color);
   }
 
+  // Get conflicting neighbor
+  function getConflictingNeighbor(state, color, currentAssignments) {
+    const neighbors = adjacency[state] || [];
+    return neighbors.find((n) => currentAssignments[n] === color);
+  }
+
   // Handle state click
   function handleStateClick(state) {
     if (showAI) return;
@@ -118,11 +124,16 @@ function PlayerMode({ activeMapModel }) {
     }
 
     // Easy and Medium modes: immediately validate constraint safety
-    if (hasConflict(state, selectedColor, assignments)) {
+    const conflictingNeighbor = getConflictingNeighbor(state, selectedColor, assignments);
+    if (conflictingNeighbor) {
       setConflictState(state);
-      setMessage(`Conflict! A neighbor of ${state} already uses ${selectedColor.toUpperCase()}.`);
+      
+      // Dynamic AI Tutor explanation of the conflict
+      const explainText = `🎓 AI Tutor: Conflict detected! "${state}" and "${conflictingNeighbor}" share an adjacency border, so they cannot both be colored ${selectedColor.toUpperCase()}. The Graph Coloring rules dictate that adjacent regions must have different colors.`;
+      
+      setMessage(explainText);
       setIsError(true);
-      setTimeout(() => setConflictState(null), 1000);
+      setTimeout(() => setConflictState(null), 2500);
       return;
     }
 
@@ -140,12 +151,22 @@ function PlayerMode({ activeMapModel }) {
   // Submit and validate solution in Hard (Blind) mode
   function handleSubmitSolution() {
     const conflicts = [];
+    const explanations = [];
+    const seenConflicts = new Set();
+
     Object.entries(assignments).forEach(([state, color]) => {
       const neighbors = adjacency[state] || [];
       neighbors.forEach((n) => {
         if (assignments[n] === color) {
           conflicts.push(state);
           conflicts.push(n);
+
+          // Prevent duplicates (e.g. A-B and B-A)
+          const key = [state, n].sort().join("-");
+          if (!seenConflicts.has(key)) {
+            seenConflicts.add(key);
+            explanations.push(`"${state}" and "${n}" are both colored ${color.toUpperCase()}`);
+          }
         }
       });
     });
@@ -155,12 +176,13 @@ function PlayerMode({ activeMapModel }) {
     setBlindSubmitted(true);
 
     if (uniqueConflicts.length > 0) {
-      setMessage(`Validation Failed! Found conflicts in ${uniqueConflicts.length} nodes (highlighted in red).`);
+      const explainList = explanations.slice(0, 2).join(", and ");
+      setMessage(`🎓 AI Tutor Validation Failed! Found ${uniqueConflicts.length} conflicting regions. Specifically, ${explainList}. Adjacent regions must have different colors.`);
       setIsError(true);
     } else {
       const allColored = Object.keys(assignments).length === states.length;
       if (allColored) {
-        setMessage("Perfect Score! 100/100. Graph colored conflict-free!");
+        setMessage("Perfect Score! 100/100. Graph colored conflict-free! The AI Tutor approves your CSP solution!");
         setIsError(false);
       } else {
         setMessage(`No conflicts found so far! Progress: ${Object.keys(assignments).length}/${states.length} nodes colored.`);

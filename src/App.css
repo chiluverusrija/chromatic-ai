@@ -1558,3 +1558,139 @@ body {
   font-family: inherit;
   font-weight: 500;
 }
+
+/* ==========================================
+   Algorithm Derby (Split-Screen Race) Styles
+   ========================================== */
+.race-board-card {
+  padding: 24px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.race-split-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.race-column {
+  background: rgba(13, 13, 24, 0.45);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.race-column:hover {
+  border-color: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.05);
+}
+
+.race-column-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--glass-border);
+  padding-bottom: 8px;
+}
+
+.race-column-header h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.race-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+
+.race-badge.rank-1 {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+}
+
+.race-badge.rank-2 {
+  background: rgba(156, 163, 175, 0.12);
+  color: #9ca3af;
+  border-color: rgba(156, 163, 175, 0.4);
+}
+
+.race-badge.rank-3 {
+  background: rgba(217, 119, 6, 0.12);
+  color: #d97706;
+  border-color: rgba(217, 119, 6, 0.4);
+}
+
+.race-badge.rank-running {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.4);
+  animation: blink-running 1.5s infinite;
+}
+
+@keyframes blink-running {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.race-svg-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 10px 0;
+  min-height: 250px;
+}
+
+.mini-svg-board {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+.race-stats {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  border-top: 1px solid var(--glass-border);
+  padding-top: 12px;
+}
+
+.race-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.race-stat-row strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Adjust layout when split screen on smaller screens */
+@media (max-width: 1200px) {
+  .race-split-container {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}

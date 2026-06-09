@@ -23,6 +23,50 @@ const ALGORITHM_MAP = {
   forwardChecking: { fn: runForwardChecking, label: "Forward Checking" },
 };
 
+// Natural language explanation builder for Narrated Teach Mode
+function getNarratedLog(step, algorithm) {
+  if (step.type === "info" || step.type === "success" || step.type === "fail") {
+    return step.log;
+  }
+  
+  if (algorithm === "backtracking") {
+    if (step.type === "assign") {
+      return `🎓 AI Tutor: Assigning color ${step.color.toUpperCase()} to "${step.state}". Adjacency is valid: none of its direct neighbors currently share this color.`;
+    } else {
+      return `🎓 AI Tutor: Reached a boundary conflict at "${step.state}" (all available colors violate adjacent constraints). Reverting selection and stepping back to try previous branches.`;
+    }
+  } else if (algorithm === "mrv") {
+    if (step.type === "assign") {
+      return `🎓 AI Tutor: Under the Minimum Remaining Values (MRV) heuristic, we pick "${step.state}" next because it has the fewest valid color choices left. Assigning color ${step.color.toUpperCase()}.`;
+    } else {
+      return `🎓 AI Tutor: MRV Solver hit a dead-end at "${step.state}". Reverting the assignment and backtracking to re-evaluate the most constrained nodes.`;
+    }
+  } else if (algorithm === "forwardChecking") {
+    if (step.type === "assign") {
+      return `🎓 AI Tutor: Assigned ${step.color.toUpperCase()} to "${step.state}". Forward Checking immediately prunes "${step.color}" from the domains of all its unassigned neighbors to prevent future conflicts.`;
+    } else {
+      return `🎓 AI Tutor: Forward Checking detected domain exhaustion (a neighbor has 0 valid colors left). Reverting "${step.state}" and backtracking early to save iterations.`;
+    }
+  }
+  
+  // Traversals
+  if (step.type === "discover") {
+    const isQueue = step.log.includes("queue");
+    const structName = isQueue ? "FIFO Queue" : "LIFO Stack";
+    const actionName = isQueue ? "enqueueing at the end" : "pushing to the top";
+    return `🎓 AI Tutor: Discovered neighbor node "${step.node}". It is unvisited, so we register it by ${actionName} of our ${structName} memory buffer.`;
+  } else if (step.type === "visit") {
+    const isStack = step.log.includes("stack") || step.log.includes("popped");
+    const structName = isStack ? "LIFO Stack" : "FIFO Queue";
+    const actionName = isStack ? "popping from the top" : "polling from the front";
+    return `🎓 AI Tutor: Visiting node "${step.node}". We retrieve it by ${actionName} of our ${structName}, mark it active, and check its connections.`;
+  } else if (step.type === "skip") {
+    return `🎓 AI Tutor: Node "${step.node}" is already in the visited list. Skipping it to prevent circular loops and graph traversal cycles.`;
+  }
+  
+  return step.log || "";
+}
+
 // Canvas Interactive Particles Component
 function ParticleCanvas() {
   const canvasRef = useRef(null);
@@ -149,12 +193,15 @@ function App() {
   const [dashboardResults, setDashboardResults] = useState([]);
   const [stepLog, setStepLog] = useState([]);
 
-  // Map & Graph Model Selection
+  // Active Map Selection
   const [selectedMapId, setSelectedMapId] = useState("india");
   const activeMapModel = MAPS_REGISTRY[selectedMapId] || MAPS_REGISTRY.india;
 
   // Solver Difficulty (influences color count limits)
   const [difficulty, setDifficulty] = useState("easy"); // easy (4) | medium (3) | hard (2)
+
+  // Educative Narrated Teach Mode state
+  const [narratedTeachMode, setNarratedTeachMode] = useState(true);
 
   // Solver details derived from difficulty level
   const activeColors = difficulty === "easy"
@@ -175,6 +222,16 @@ function App() {
   const [usePythonEngine, setUsePythonEngine] = useState(false);
   const [pyodide, setPyodide] = useState(null);
   const [pyodideStatus, setPyodideStatus] = useState("idle"); // idle | loading | ready | error
+
+  // Live Algorithm Derby Race State
+  const [raceState, setRaceState] = useState({
+    isRace: false,
+    solvers: {
+      backtracking: { assignments: {}, conflictState: null, explored: 0, backtracks: 0, done: false, time: 0, rank: null },
+      mrv: { assignments: {}, conflictState: null, explored: 0, backtracks: 0, done: false, time: 0, rank: null },
+      forwardChecking: { assignments: {}, conflictState: null, explored: 0, backtracks: 0, done: false, time: 0, rank: null }
+    }
+  });
 
   const intervalRef = useRef(null);
   const stepLogRef = useRef(null);
@@ -245,7 +302,7 @@ function App() {
     if (isRunning) return;
 
     if (mode === "compare") {
-      runCompare();
+      runAlgorithmRace();
       return;
     }
 
@@ -264,9 +321,9 @@ function App() {
     setTraversalState(null);
     setSteps([]);
     setStepLog([]);
+    setRaceState({ isRace: false, solvers: {} });
     setCurrentStep(0);
 
-    // Run the solver on active states list, active adjacency list, and active colors count
     const result = algo.fn(activeMapModel.states, activeMapModel.adjacency, activeColors);
     const allSteps = result.steps;
     setSteps(allSteps);
@@ -313,21 +370,230 @@ function App() {
       if (step.type === "assign") {
         setAssignments({ ...step.snapshot });
         setConflictState(null);
+        
+        const logText = narratedTeachMode
+          ? getNarratedLog(step, selectedAlgorithm)
+          : `Assign ${step.color.toUpperCase()} to ${step.state}`;
+
         setStepLog((prev) => [
           ...prev,
-          { type: "assign", text: `Assign ${step.color.toUpperCase()} to ${step.state}` },
+          { type: "assign", text: logText },
         ]);
       } else {
         setConflictState(step.state);
+        
+        const logText = narratedTeachMode
+          ? getNarratedLog(step, selectedAlgorithm)
+          : `Backtrack from ${step.state} (conflict!)`;
+
         setStepLog((prev) => [
           ...prev,
-          { type: "backtrack", text: `Backtrack from ${step.state} (conflict!)` },
+          { type: "backtrack", text: logText },
         ]);
         setTimeout(() => setConflictState(null), selectedSpeed.ms * 0.8);
       }
 
       setCurrentStep(i + 1);
       i++;
+    }, selectedSpeed.ms);
+  }
+
+  // Concurrent Side-by-Side Algorithm Race Loop
+  function runAlgorithmRace() {
+    setIsRunning(true);
+    setIsDone(false);
+    setAssignments({});
+    setTraversalState(null);
+    setSteps([]);
+    setStepLog([]);
+    setCurrentStep(0);
+
+    const btRes = runBacktracking(activeMapModel.states, activeMapModel.adjacency, activeColors);
+    const mrvRes = runMRV(activeMapModel.states, activeMapModel.adjacency, activeColors);
+    const fcRes = runForwardChecking(activeMapModel.states, activeMapModel.adjacency, activeColors);
+
+    // Instant Mode Check (selectedSpeed.ms === 0)
+    if (selectedSpeed.ms === 0) {
+      const solverData = [
+        { id: "backtracking", res: btRes },
+        { id: "mrv", res: mrvRes },
+        { id: "forwardChecking", res: fcRes }
+      ];
+      solverData.sort((a, b) => {
+        const timeDiff = parseFloat(a.res.timeTaken) - parseFloat(b.res.timeTaken);
+        if (Math.abs(timeDiff) > 0.01) return timeDiff;
+        return a.res.steps.length - b.res.steps.length;
+      });
+      
+      const ranksMap = {};
+      solverData.forEach((s, idx) => {
+        ranksMap[s.id] = idx + 1;
+      });
+
+      const finalRaceState = {
+        isRace: true,
+        solvers: {
+          backtracking: {
+            assignments: btRes.assignments,
+            conflictState: null,
+            explored: btRes.steps.filter(s => s.type === "assign").length,
+            backtracks: btRes.steps.filter(s => s.type === "backtrack").length,
+            done: true,
+            time: Math.round(parseFloat(btRes.timeTaken)),
+            rank: ranksMap.backtracking
+          },
+          mrv: {
+            assignments: mrvRes.assignments,
+            conflictState: null,
+            explored: mrvRes.steps.filter(s => s.type === "assign").length,
+            backtracks: mrvRes.steps.filter(s => s.type === "backtrack").length,
+            done: true,
+            time: Math.round(parseFloat(mrvRes.timeTaken)),
+            rank: ranksMap.mrv
+          },
+          forwardChecking: {
+            assignments: fcRes.assignments,
+            conflictState: null,
+            explored: fcRes.steps.filter(s => s.type === "assign").length,
+            backtracks: fcRes.steps.filter(s => s.type === "backtrack").length,
+            done: true,
+            time: Math.round(parseFloat(fcRes.timeTaken)),
+            rank: ranksMap.forwardChecking
+          }
+        }
+      };
+
+      setRaceState(finalRaceState);
+      setIsRunning(false);
+      setIsDone(true);
+      
+      setStepLog([
+        { type: "assign", text: `🏁 Backtracking solver completed in ${btRes.timeTaken}ms! (Place: ${ranksMap.backtracking})` },
+        { type: "assign", text: `🏁 MRV Heuristic solver completed in ${mrvRes.timeTaken}ms! (Place: ${ranksMap.mrv})` },
+        { type: "assign", text: `🏁 Forward Checking solver completed in ${fcRes.timeTaken}ms! (Place: ${ranksMap.forwardChecking})` },
+        { type: "assign", text: "🏆 Race finished! Compare overall stats across the solvers." }
+      ]);
+
+      setDashboardResults([
+        { algorithm: "Backtracking", nodesExplored: btRes.nodesExplored, backtracks: btRes.backtracks, timeTaken: btRes.timeTaken },
+        { algorithm: "MRV Heuristic", nodesExplored: mrvRes.nodesExplored, backtracks: mrvRes.backtracks, timeTaken: mrvRes.timeTaken },
+        { algorithm: "Forward Checking", nodesExplored: fcRes.nodesExplored, backtracks: fcRes.backtracks, timeTaken: fcRes.timeTaken }
+      ]);
+      return;
+    }
+
+    let currentRace = {
+      isRace: true,
+      solvers: {
+        backtracking: { assignments: {}, conflictState: null, explored: 0, backtracks: 0, done: false, time: 0, rank: null },
+        mrv: { assignments: {}, conflictState: null, explored: 0, backtracks: 0, done: false, time: 0, rank: null },
+        forwardChecking: { assignments: {}, conflictState: null, explored: 0, backtracks: 0, done: false, time: 0, rank: null },
+      }
+    };
+    setRaceState(currentRace);
+    setStepLog([{ type: "idle", text: "🏁 The Algorithm Derby Race has started! Watch the solvers color concurrently." }]);
+
+    let btIdx = 0, mrvIdx = 0, fcIdx = 0;
+    let btExplored = 0, btBacktracks = 0;
+    let mrvExplored = 0, mrvBacktracks = 0;
+    let fcExplored = 0, fcBacktracks = 0;
+    let ranks = 0;
+    const startTime = performance.now();
+
+    intervalRef.current = setInterval(() => {
+      const elapsed = Math.round(performance.now() - startTime);
+      
+      const btStep = btRes.steps[btIdx];
+      const mrvStep = mrvRes.steps[mrvIdx];
+      const fcStep = fcRes.steps[fcIdx];
+
+      // Lightweight copy instead of slow JSON.parse(JSON.stringify)
+      const updatedRace = {
+        isRace: true,
+        solvers: {
+          backtracking: { ...currentRace.solvers.backtracking },
+          mrv: { ...currentRace.solvers.mrv },
+          forwardChecking: { ...currentRace.solvers.forwardChecking }
+        }
+      };
+
+      // 1. Backtracking updates
+      if (btIdx < btRes.steps.length) {
+        if (btStep.type === "assign") btExplored++;
+        else if (btStep.type === "backtrack") btBacktracks++;
+
+        updatedRace.solvers.backtracking.assignments = btStep.snapshot;
+        updatedRace.solvers.backtracking.conflictState = btStep.type === "backtrack" ? btStep.state : null;
+        updatedRace.solvers.backtracking.explored = btExplored;
+        updatedRace.solvers.backtracking.backtracks = btBacktracks;
+        updatedRace.solvers.backtracking.time = elapsed;
+        btIdx++;
+      } else if (!updatedRace.solvers.backtracking.done) {
+        updatedRace.solvers.backtracking.done = true;
+        ranks++;
+        updatedRace.solvers.backtracking.rank = ranks;
+        updatedRace.solvers.backtracking.time = Math.round(parseFloat(btRes.timeTaken));
+        setStepLog(prev => [...prev, { type: "assign", text: `🏁 Backtracking solver completed in ${btRes.timeTaken}ms! (Place: ${ranks})` }]);
+      }
+
+      // 2. MRV updates
+      if (mrvIdx < mrvRes.steps.length) {
+        if (mrvStep.type === "assign") mrvExplored++;
+        else if (mrvStep.type === "backtrack") mrvBacktracks++;
+
+        updatedRace.solvers.mrv.assignments = mrvStep.snapshot;
+        updatedRace.solvers.mrv.conflictState = mrvStep.type === "backtrack" ? mrvStep.state : null;
+        updatedRace.solvers.mrv.explored = mrvExplored;
+        updatedRace.solvers.mrv.backtracks = mrvBacktracks;
+        updatedRace.solvers.mrv.time = elapsed;
+        mrvIdx++;
+      } else if (!updatedRace.solvers.mrv.done) {
+        updatedRace.solvers.mrv.done = true;
+        ranks++;
+        updatedRace.solvers.mrv.rank = ranks;
+        updatedRace.solvers.mrv.time = Math.round(parseFloat(mrvRes.timeTaken));
+        setStepLog(prev => [...prev, { type: "assign", text: `🏁 MRV Heuristic solver completed in ${mrvRes.timeTaken}ms! (Place: ${ranks})` }]);
+      }
+
+      // 3. Forward Checking updates
+      if (fcIdx < fcRes.steps.length) {
+        if (fcStep.type === "assign") fcExplored++;
+        else if (fcStep.type === "backtrack") fcBacktracks++;
+
+        updatedRace.solvers.forwardChecking.assignments = fcStep.snapshot;
+        updatedRace.solvers.forwardChecking.conflictState = fcStep.type === "backtrack" ? fcStep.state : null;
+        updatedRace.solvers.forwardChecking.explored = fcExplored;
+        updatedRace.solvers.forwardChecking.backtracks = fcBacktracks;
+        updatedRace.solvers.forwardChecking.time = elapsed;
+        fcIdx++;
+      } else if (!updatedRace.solvers.forwardChecking.done) {
+        updatedRace.solvers.forwardChecking.done = true;
+        ranks++;
+        updatedRace.solvers.forwardChecking.rank = ranks;
+        updatedRace.solvers.forwardChecking.time = Math.round(parseFloat(fcRes.timeTaken));
+        setStepLog(prev => [...prev, { type: "assign", text: `🏁 Forward Checking solver completed in ${fcRes.timeTaken}ms! (Place: ${ranks})` }]);
+      }
+
+      currentRace = updatedRace;
+      setRaceState(updatedRace);
+
+      // Finish condition
+      if (
+        updatedRace.solvers.backtracking.done &&
+        updatedRace.solvers.mrv.done &&
+        updatedRace.solvers.forwardChecking.done
+      ) {
+        clearInterval(intervalRef.current);
+        setIsRunning(false);
+        setIsDone(true);
+        setStepLog(prev => [...prev, { type: "assign", text: "🏆 Race finished! Compare overall stats across the solvers." }]);
+        
+        setDashboardResults([
+          { algorithm: "Backtracking", nodesExplored: btRes.nodesExplored, backtracks: btRes.backtracks, timeTaken: btRes.timeTaken },
+          { algorithm: "MRV Heuristic", nodesExplored: mrvRes.nodesExplored, backtracks: mrvRes.backtracks, timeTaken: mrvRes.timeTaken },
+          { algorithm: "Forward Checking", nodesExplored: fcRes.nodesExplored, backtracks: fcRes.backtracks, timeTaken: fcRes.timeTaken }
+        ]);
+      }
     }, selectedSpeed.ms);
   }
 
@@ -338,6 +604,7 @@ function App() {
     setAssignments({});
     setSteps([]);
     setStepLog([]);
+    setRaceState({ isRace: false, solvers: {} });
     setCurrentStep(0);
 
     let result = null;
@@ -365,18 +632,18 @@ function App() {
         } catch (err) {
           console.error("Python engine error, falling back to JS: ", err);
           result = selectedTraversal === "bfs"
-            ? runBFS(selectedStartState, activeMapModel.states)
-            : runDFS(selectedStartState, activeMapModel.states);
+            ? runBFS(selectedStartState, activeMapModel.states, activeMapModel.adjacency)
+            : runDFS(selectedStartState, activeMapModel.states, activeMapModel.adjacency);
         }
       } else {
         result = selectedTraversal === "bfs"
-          ? runBFS(selectedStartState, activeMapModel.states)
-          : runDFS(selectedStartState, activeMapModel.states);
+          ? runBFS(selectedStartState, activeMapModel.states, activeMapModel.adjacency)
+          : runDFS(selectedStartState, activeMapModel.states, activeMapModel.adjacency);
       }
     } else {
       result = selectedTraversal === "bfs"
-        ? runBFS(selectedStartState, activeMapModel.states)
-        : runDFS(selectedStartState, activeMapModel.states);
+        ? runBFS(selectedStartState, activeMapModel.states, activeMapModel.adjacency)
+        : runDFS(selectedStartState, activeMapModel.states, activeMapModel.adjacency);
     }
 
     const allSteps = result.steps;
@@ -418,7 +685,7 @@ function App() {
         ...prev,
         {
           type: step.type === "visit" ? "assign" : step.type === "skip" ? "backtrack" : "idle",
-          text: step.log
+          text: narratedTeachMode ? getNarratedLog(step, selectedTraversal) : step.log
         }
       ]);
 
@@ -435,6 +702,7 @@ function App() {
     setTraversalState(null);
     setSteps([]);
     setStepLog([]);
+    setRaceState({ isRace: false, solvers: {} });
     setCurrentStep(0);
 
     const result = runChromaticFinder(activeMapModel.states, activeMapModel.adjacency);
@@ -510,7 +778,7 @@ function App() {
             : step.type === "fail" || step.type === "backtrack"
             ? "backtrack"
             : "idle",
-          text: step.log
+          text: narratedTeachMode ? getNarratedLog(step, "backtracking") : step.log
         }
       ]);
 
@@ -520,24 +788,10 @@ function App() {
   }
 
   function runCompare() {
-    setIsRunning(true);
-    setIsDone(false);
-    setDashboardResults([]);
-
-    const results = Object.entries(ALGORITHM_MAP).map(([key, algo]) => {
-      const result = algo.fn(activeMapModel.states, activeMapModel.adjacency, activeColors);
-      return {
-        algorithm: algo.label,
-        nodesExplored: result.nodesExplored,
-        backtracks: result.backtracks,
-        timeTaken: result.timeTaken,
-      };
-    });
-
-    setDashboardResults(results);
-    setAssignments(runBacktracking(activeMapModel.states, activeMapModel.adjacency, activeColors).assignments);
-    setIsRunning(false);
-    setIsDone(true);
+    // Force set sandbox compare mode
+    setMode("compare");
+    setAppSection("sandbox");
+    runAlgorithmRace();
   }
 
   function handleReset() {
@@ -552,6 +806,7 @@ function App() {
     setSelectedState(null);
     setDashboardResults([]);
     setTraversalState(null);
+    setRaceState({ isRace: false, solvers: {} });
   }
 
   return (
@@ -688,6 +943,17 @@ function App() {
               <button className="feature-btn">Launch Finder</button>
             </div>
 
+            <div className="feature-card glass-panel" onClick={() => launchSandbox("compare")}>
+              <div className="feature-card-header">
+                <span className="feature-icon font-gradient-1" style={{ textShadow: "0 0 10px rgba(139, 92, 246, 0.4)" }}>🏁</span>
+                <h3>Algorithm Derby</h3>
+              </div>
+              <p>
+                A concurrent 3-column split-screen race! Watch Backtracking, MRV Heuristic, and Forward Checking solve the active graph simultaneously in real-time.
+              </p>
+              <button className="feature-btn">Launch Derby</button>
+            </div>
+
             <div className="feature-card glass-panel" onClick={() => launchSandbox("player")}>
               <div className="feature-card-header">
                 <span className="feature-icon font-gradient-4">🎮</span>
@@ -697,17 +963,6 @@ function App() {
                 Color the graph manually. Select a difficulty: Easy (shows hover safe indicators), Medium (standard safety), or Hard (blind color with validation submission).
               </p>
               <button className="feature-btn">Launch Game</button>
-            </div>
-
-            <div className="feature-card glass-panel" onClick={() => launchSandbox("exam")}>
-              <div className="feature-card-header">
-                <span className="feature-icon font-gradient-5">📅</span>
-                <h3>Exam Scheduler</h3>
-              </div>
-              <p>
-                Apply Graph Coloring to schedule university courses into minimal slots without exam conflicts for students sharing courses.
-              </p>
-              <button className="feature-btn">Launch Scheduler</button>
             </div>
           </div>
         </div>
@@ -754,6 +1009,9 @@ function App() {
               // Difficulty level
               difficulty={difficulty}
               onDifficultySelect={setDifficulty}
+              // Teach mode props
+              narratedTeachMode={narratedTeachMode}
+              onNarratedTeachModeToggle={setNarratedTeachMode}
             />
 
             {/* Status Panel */}
@@ -765,7 +1023,7 @@ function App() {
                 </div>
                 {mode === "compare" && isDone && (
                   <button onClick={runCompare} className="btn-re-run">
-                    Re-run Benchmarks
+                    Re-run Derby
                   </button>
                 )}
               </div>
@@ -788,7 +1046,7 @@ function App() {
 
             {/* Step Log Panel */}
             <div className="card glass-panel fade-in">
-              <p className="card-title">Solver Execution Log</p>
+              <p className="card-title">{narratedTeachMode ? "AI Tutor Narrations" : "Solver Execution Log"}</p>
               <div className="step-log" ref={stepLogRef}>
                 {stepLog.length === 0 ? (
                   <p className="no-steps-placeholder">Logs will stream here upon launching solver...</p>
@@ -816,6 +1074,7 @@ function App() {
               mode={mode}
               traversalState={traversalState}
               activeMapModel={activeMapModel}
+              raceState={raceState.isRace ? raceState : null}
             />
           </div>
 
@@ -877,7 +1136,7 @@ function App() {
               <div className="card glass-panel no-dashboard-card fade-in">
                 <h3>Benchmark Dashboard</h3>
                 <p>Run CSP Solver or click "Compare All" in Solver mode to view side-by-side performance metrics.</p>
-                <button onClick={() => { setMode("ai"); runCompare(); }} className="btn-dashboard-action">
+                <button onClick={runCompare} className="btn-dashboard-action">
                   📊 Run Comparison Benchmarks
                 </button>
               </div>
