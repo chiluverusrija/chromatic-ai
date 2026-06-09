@@ -191,6 +191,3 @@ Chromatic AI transforms abstract concepts in Artificial Intelligence into engagi
 
 ---
 
-## 📄 License
-
-This project was developed for **academic and educational purposes** as part of the **Computer Fundamentals of Artificial Intelligence (CFAI)** course project at **KL Deemed to be University**.
